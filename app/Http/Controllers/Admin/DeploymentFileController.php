@@ -14,7 +14,7 @@ class DeploymentFileController extends Controller
      */
     public function index(Request $request)
     {
-        $base = $request->get('server_path', '\\\\10.10.16.47\\c$\\wamp64\\www\\dep_env');
+        $base = $request->get('server_path', '\\\\10.10.15.59\\c$\\xampp\\htdocs\\dep_env');
         $base = $this->normalizeUnc($base);
 
         $files = [];
@@ -50,9 +50,9 @@ class DeploymentFileController extends Controller
     public function create()
     {
         $defaults = [
-            'server_path' => '\\\\10.10.16.47\\c$\\wamp64\\www\\dep_env',
+            'server_path' => '\\\\10.10.15.59\\c$\\xampp\\htdocs\\dep_env',
             'filename'    => 'example_deploy.php',
-            'project_path'=> 'C:\\wamp64\\www\\com_cal_deploy',
+            'project_path'=> 'C:\\xampp\\htdocs\\com_cal_deploy',
         ];
         return view('admin.deployment-files.create', compact('defaults'));
     }
@@ -63,9 +63,9 @@ class DeploymentFileController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'server_path'  => ['required','string'], // e.g. \\10.10.16.47\c$\wamp64\www\dep_env
+            'server_path'  => ['required','string'], // e.g. \\10.10.15.59\c$\xampp\htdocs\dep_env
             'filename'     => ['required','string'], // e.g. example_deploy.php
-            'project_path' => ['required','string'], // e.g. C:\\wamp64\\www\\com_cal_deploy
+            'project_path' => ['required','string'], // e.g. C:\\xampp\\htdocs\\com_cal_deploy
         ]);
 
         $serverPath = rtrim($data['server_path'], "\\/ ");
@@ -124,7 +124,7 @@ class DeploymentFileController extends Controller
 
         $dir = dirname($full);
         // Basic guard: must be under dep_env
-        abort_unless(str_contains(strtolower($dir), strtolower('\\\\10.10.16.47\\c$\\wamp64\\www\\dep_env')), 403);
+        abort_unless(str_contains(strtolower($dir), strtolower('\\\\10.10.15.59\\c$\\xampp\\htdocs\\dep_env')), 403);
 
         $content = @file_get_contents($full);
         abort_unless($content !== false, 404);
@@ -148,7 +148,7 @@ class DeploymentFileController extends Controller
         $full = base64_decode($data['file']);
         abort_unless($full && str_ends_with(strtolower($full), '.php'), 404);
         $dir = dirname($full);
-        abort_unless(str_contains(strtolower($dir), strtolower('\\\\10.10.16.47\\c$\\wamp64\\www\\dep_env')), 403);
+        abort_unless(str_contains(strtolower($dir), strtolower('\\\\10.10.15.59\\c$\\xampp\\htdocs\\dep_env')), 403);
 
         $ok = @file_put_contents($full, $data['content']);
         if ($ok === false) {
@@ -169,7 +169,7 @@ class DeploymentFileController extends Controller
         $full = base64_decode($data['file']);
         abort_unless($full && str_ends_with(strtolower($full), '.php'), 404);
         $dir = dirname($full);
-        abort_unless(str_contains(strtolower($dir), strtolower('\\\\10.10.16.47\\c$\\wamp64\\www\\dep_env')), 403);
+        abort_unless(str_contains(strtolower($dir), strtolower('\\\\10.10.15.59\\c$\\xampp\\htdocs\\dep_env')), 403);
 
         $ok = @unlink($full);
         if (!$ok) {
