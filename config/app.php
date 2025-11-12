@@ -54,9 +54,9 @@ return [
 
     // 'url' => env('APP_URL', 'http://localhost'),
 
-     'url'             => env('APP_URL', 'http://101-php-01.fmdqgroup.com/deployment-portal/'),
+     'url'             => env('APP_URL', 'http://101-php-01.fmdqgroup.com/deployment_portal/'),
 
-    'asset_url'       => env('ASSET_URL', 'http://101-php-01.fmdqgroup.com/deployment-portal/public/'),
+    'asset_url'       => env('ASSET_URL', 'http://101-php-01.fmdqgroup.com/deployment_portal/public/'),
 
     /*
     |--------------------------------------------------------------------------
