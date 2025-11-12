@@ -16,8 +16,9 @@
     <title>@yield('title', 'Rhymes Author Platform')</title>
     
     <!-- StyleSheets -->
-    <link rel="stylesheet" href="./assets/css/dashlite.css?ver=3.2.3">
-    <link id="skin-default" rel="stylesheet" href="./assets/css/theme.css?ver=3.2.3">
+    <link rel="stylesheet" href="{{ asset('assets/css/dashlite.css') }}">
+    <link rel="stylesheet" href="{{ asset('assets/css/theme.css') }}">
+    
     
     @stack('styles')
 </head>
@@ -33,10 +34,10 @@
                     <div class="nk-block nk-block-middle nk-auth-body wide-xs">
                         <!-- Brand Logo -->
                         <div class="brand-logo pb-4 text-center">
-                            <a href="{{ route('dashboard') }}" class="logo-link">
+                            <!-- <a href="{{ route('dashboard') }}" class="logo-link">
                                 <img class="logo-light logo-img logo-img-lg" src="./images/logo.png" srcset="./images/logo2x.png 2x" alt="Rhymes Platform">
                                 <img class="logo-dark logo-img logo-img-lg" src="./images/logo-dark.png" srcset="./images/logo-dark2x.png 2x" alt="Rhymes Platform">
-                            </a>
+                            </a> -->
                         </div>
 
                         <!-- Auth Card -->
@@ -131,8 +132,9 @@
     <!-- app-root @e -->
 
     <!-- JavaScript -->
-    <script src="./assets/js/bundle.js?ver=3.2.3"></script>
-    <script src="./assets/js/scripts.js?ver=3.2.3"></script>
+    <script src="{{ asset('assets/js/bundle.js') }}"></script>
+    <script src="{{ asset('assets/js/scripts.js') }}"></script>
+    
     
     @stack('scripts')
 </body>

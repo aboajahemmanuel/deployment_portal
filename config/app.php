@@ -54,9 +54,9 @@ return [
 
     // 'url' => env('APP_URL', 'http://localhost'),
 
-     'url'             => env('APP_URL', 'https://rhymes-platform-production.up.railway.app/'),
+     'url'             => env('APP_URL', 'http://101-php-01.fmdqgroup.com/deployment-portal/'),
 
-    'asset_url'       => env('ASSET_URL', 'https://rhymes-platform-production.up.railway.app/'),
+    'asset_url'       => env('ASSET_URL', 'http://101-php-01.fmdqgroup.com/deployment-portal/public/'),
 
     /*
     |--------------------------------------------------------------------------

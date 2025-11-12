@@ -11,9 +11,8 @@
     <link rel="shortcut icon" href="/images/favicon.png">
     
     <!-- DashLite Styles -->
-    <link rel="stylesheet" href="/assets/css/dashlite.css?ver=3.2.3">
-    <link id="skin-default" rel="stylesheet" href="/assets/css/theme.css?ver=3.2.3">
-    
+     <link rel="stylesheet" href="{{ asset('assets/css/dashlite.css') }}">
+    <link rel="stylesheet" href="{{ asset('assets/css/theme.css') }}">
     <!-- Custom Styles -->
     <link rel="stylesheet" href="/css/custom.css">
     
@@ -23,41 +22,6 @@
     
     <!-- Scripts -->
     @vite(['resources/css/app.css', 'resources/js/app.js'])
-    
-    <!-- SweetAlert2 -->
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <style>
-        /* SweetAlert2 Custom Styles */
-        .swal2-popup {
-            border-radius: 0.5rem;
-            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-        }
-        
-        .swal2-title {
-            font-size: 1.25rem;
-            font-weight: 600;
-        }
-        
-        .swal2-content {
-            font-size: 1rem;
-        }
-        
-        .swal2-success {
-            border-color: #20d08c;
-        }
-        
-        .swal2-error {
-            border-color: #e85347;
-        }
-        
-        .swal2-warning {
-            border-color: #f4bd0e;
-        }
-        
-        .swal2-info {
-            border-color: #099fff;
-        }
-    </style>
 </head>
 <body class="nk-body bg-lighter npc-default has-sidebar">
     <div class="nk-app-root">
@@ -266,8 +230,8 @@
     </div>
     
     <!-- DashLite Scripts -->
-    <script src="/assets/js/bundle.js?ver=3.2.3"></script>
-    <script src="/assets/js/scripts.js?ver=3.2.3"></script>
+   <script src="{{ asset('assets/js/bundle.js') }}"></script>
+    <script src="{{ asset('assets/js/scripts.js') }}"></script>
     
     <!-- Notifications Script -->
     <script src="{{ asset('js/notifications.js') }}"></script>
@@ -376,7 +340,7 @@
             };
             
             // Confirm dialog function
-            window.confirmAction = function(message, confirmCallback, cancelCallback) {
+            window.confirmAction = function(message, callback) {
                 Swal.fire({
                     title: 'Are you sure?',
                     text: message,
@@ -387,10 +351,8 @@
                     confirmButtonText: 'Yes, proceed!',
                     cancelButtonText: 'Cancel'
                 }).then((result) => {
-                    if (result.isConfirmed && confirmCallback) {
-                        confirmCallback();
-                    } else if (result.isDismissed && cancelCallback) {
-                        cancelCallback();
+                    if (result.isConfirmed) {
+                        callback();
                     }
                 });
             };
