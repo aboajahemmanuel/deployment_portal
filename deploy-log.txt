@@ -1,0 +1,167 @@
+🚀 Deployment started in C:\xampp\htdocs\deployment-management
+
+> Running: git config --global --add safe.directory "C:\xampp\htdocs\deployment-management"
+
+> Running: cd /d "C:\xampp\htdocs\deployment-management" && git pull origin main
+From https://github.com/mannye3/-rhymes-platform
+ * branch            main       -> FETCH_HEAD
+Already up to date.
+
+> Running: cd /d "C:\xampp\htdocs\deployment-management" && git rev-parse HEAD
+856b547609eb75d6174e8d042ac7b722ea3e1139
+
+> Running: cd /d "C:\xampp\htdocs\deployment-management" && composer install --no-dev --optimize-autoloader
+Installing dependencies from lock file
+Verifying lock file contents can be installed on current platform.
+Package operations: 0 installs, 0 updates, 36 removals
+  - Removing theseer/tokenizer (1.2.3)
+  - Removing symfony/yaml (v7.3.3)
+  - Removing staabm/side-effects-detector (1.0.5)
+  - Removing sebastian/version (5.0.2)
+  - Removing sebastian/type (5.1.3)
+  - Removing sebastian/recursion-context (6.0.3)
+  - Removing sebastian/object-reflector (4.0.1)
+  - Removing sebastian/object-enumerator (6.0.1)
+  - Removing sebastian/lines-of-code (3.0.1)
+  - Removing sebastian/global-state (7.0.2)
+  - Removing sebastian/exporter (6.3.2)
+  - Removing sebastian/environment (7.2.1)
+  - Removing sebastian/diff (6.0.2)
+  - Removing sebastian/complexity (4.0.1)
+  - Removing sebastian/comparator (6.3.2)
+  - Removing sebastian/code-unit-reverse-lookup (4.0.1)
+  - Removing sebastian/code-unit (3.0.3)
+  - Removing sebastian/cli-parser (3.0.2)
+  - Removing phpunit/phpunit (11.5.42)
+  - Removing phpunit/php-timer (7.0.1)
+  - Removing phpunit/php-text-template (4.0.1)
+  - Removing phpunit/php-invoker (5.0.1)
+  - Removing phpunit/php-file-iterator (5.1.0)
+  - Removing phpunit/php-code-coverage (11.0.11)
+  - Removing phar-io/version (3.2.1)
+  - Removing phar-io/manifest (2.0.4)
+  - Removing nunomaduro/collision (v8.8.2)
+  - Removing myclabs/deep-copy (1.13.4)
+  - Removing mockery/mockery (1.6.12)
+  - Removing laravel/sail (v1.46.0)
+  - Removing laravel/pint (v1.25.1)
+  - Removing laravel/pail (v1.2.3)
+
+In GitDownloader.php line 241:
+                                                                                                                    
+  Failed to execute git show-ref --head -d                                                                          
+                                                                                                                    
+  fatal: detected dubious ownership in repository at 'C:/xampp/htdocs/deployment-management/vendor/laravel/breeze'  
+  'C:/xampp/htdocs/deployment-management/vendor/laravel/breeze' is owned by:                                        
+  	FMDQGROUP/aboajah.emmanuel (S-1-5-21-3190504930-1769880860-3723419689-24341)                                      
+  but the current user is:                                                                                          
+  	NT AUTHORITY/SYSTEM (S-1-5-18)                                                                                    
+  To add an exception for this directory, call:                                                                     
+                                                                                                                    
+  	git config --global --add safe.directory C:/xampp/htdocs/deployment-management/vendor/laravel/breeze              
+                                                                                                                    
+
+install [--prefer-source] [--prefer-dist] [--prefer-install PREFER-INSTALL] [--dry-run] [--download-only] [--dev] [--no-suggest] [--no-dev] [--no-autoloader] [--no-progress] [--no-install] [--audit] [--audit-format AUDIT-FORMAT] [-v|vv|vvv|--verbose] [-o|--optimize-autoloader] [-a|--classmap-authoritative] [--apcu-autoloader] [--apcu-autoloader-prefix APCU-AUTOLOADER-PREFIX] [--ignore-platform-req IGNORE-PLATFORM-REQ] [--ignore-platform-reqs] [--] [<packages>...]
+
+
+> Running: cd /d "C:\xampp\htdocs\deployment-management" && php artisan cache:clear
+PHP Warning:  require(C:\xampp\htdocs\deployment-management\vendor\composer/../myclabs/deep-copy/src/DeepCopy/deep_copy.php): Failed to open stream: No such file or directory in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php on line 41
+
+Warning: require(C:\xampp\htdocs\deployment-management\vendor\composer/../myclabs/deep-copy/src/DeepCopy/deep_copy.php): Failed to open stream: No such file or directory in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php on line 41
+PHP Fatal error:  Uncaught Error: Failed opening required 'C:\xampp\htdocs\deployment-management\vendor\composer/../myclabs/deep-copy/src/DeepCopy/deep_copy.php' (include_path='C:\xampp\php\PEAR') in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php:41
+Stack trace:
+#0 C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php(45): {closure}('6124b4c8570aa39...', 'C:\\xampp\\htdocs...')
+#1 C:\xampp\htdocs\deployment-management\vendor\autoload.php(22): ComposerAutoloaderInitc514d8f7b9fc5970bdd94287905ef584::getLoader()
+#2 C:\xampp\htdocs\deployment-management\artisan(10): require('C:\\xampp\\htdocs...')
+#3 {main}
+  thrown in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php on line 41
+
+Fatal error: Uncaught Error: Failed opening required 'C:\xampp\htdocs\deployment-management\vendor\composer/../myclabs/deep-copy/src/DeepCopy/deep_copy.php' (include_path='C:\xampp\php\PEAR') in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php:41
+Stack trace:
+#0 C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php(45): {closure}('6124b4c8570aa39...', 'C:\\xampp\\htdocs...')
+#1 C:\xampp\htdocs\deployment-management\vendor\autoload.php(22): ComposerAutoloaderInitc514d8f7b9fc5970bdd94287905ef584::getLoader()
+#2 C:\xampp\htdocs\deployment-management\artisan(10): require('C:\\xampp\\htdocs...')
+#3 {main}
+  thrown in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php on line 41
+
+> Running: cd /d "C:\xampp\htdocs\deployment-management" && php artisan config:cache
+PHP Warning:  require(C:\xampp\htdocs\deployment-management\vendor\composer/../myclabs/deep-copy/src/DeepCopy/deep_copy.php): Failed to open stream: No such file or directory in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php on line 41
+
+Warning: require(C:\xampp\htdocs\deployment-management\vendor\composer/../myclabs/deep-copy/src/DeepCopy/deep_copy.php): Failed to open stream: No such file or directory in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php on line 41
+PHP Fatal error:  Uncaught Error: Failed opening required 'C:\xampp\htdocs\deployment-management\vendor\composer/../myclabs/deep-copy/src/DeepCopy/deep_copy.php' (include_path='C:\xampp\php\PEAR') in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php:41
+Stack trace:
+#0 C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php(45): {closure}('6124b4c8570aa39...', 'C:\\xampp\\htdocs...')
+#1 C:\xampp\htdocs\deployment-management\vendor\autoload.php(22): ComposerAutoloaderInitc514d8f7b9fc5970bdd94287905ef584::getLoader()
+#2 C:\xampp\htdocs\deployment-management\artisan(10): require('C:\\xampp\\htdocs...')
+#3 {main}
+  thrown in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php on line 41
+
+Fatal error: Uncaught Error: Failed opening required 'C:\xampp\htdocs\deployment-management\vendor\composer/../myclabs/deep-copy/src/DeepCopy/deep_copy.php' (include_path='C:\xampp\php\PEAR') in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php:41
+Stack trace:
+#0 C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php(45): {closure}('6124b4c8570aa39...', 'C:\\xampp\\htdocs...')
+#1 C:\xampp\htdocs\deployment-management\vendor\autoload.php(22): ComposerAutoloaderInitc514d8f7b9fc5970bdd94287905ef584::getLoader()
+#2 C:\xampp\htdocs\deployment-management\artisan(10): require('C:\\xampp\\htdocs...')
+#3 {main}
+  thrown in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php on line 41
+
+> Running: cd /d "C:\xampp\htdocs\deployment-management" && php artisan route:cache
+PHP Warning:  require(C:\xampp\htdocs\deployment-management\vendor\composer/../myclabs/deep-copy/src/DeepCopy/deep_copy.php): Failed to open stream: No such file or directory in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php on line 41
+
+Warning: require(C:\xampp\htdocs\deployment-management\vendor\composer/../myclabs/deep-copy/src/DeepCopy/deep_copy.php): Failed to open stream: No such file or directory in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php on line 41
+PHP Fatal error:  Uncaught Error: Failed opening required 'C:\xampp\htdocs\deployment-management\vendor\composer/../myclabs/deep-copy/src/DeepCopy/deep_copy.php' (include_path='C:\xampp\php\PEAR') in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php:41
+Stack trace:
+#0 C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php(45): {closure}('6124b4c8570aa39...', 'C:\\xampp\\htdocs...')
+#1 C:\xampp\htdocs\deployment-management\vendor\autoload.php(22): ComposerAutoloaderInitc514d8f7b9fc5970bdd94287905ef584::getLoader()
+#2 C:\xampp\htdocs\deployment-management\artisan(10): require('C:\\xampp\\htdocs...')
+#3 {main}
+  thrown in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php on line 41
+
+Fatal error: Uncaught Error: Failed opening required 'C:\xampp\htdocs\deployment-management\vendor\composer/../myclabs/deep-copy/src/DeepCopy/deep_copy.php' (include_path='C:\xampp\php\PEAR') in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php:41
+Stack trace:
+#0 C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php(45): {closure}('6124b4c8570aa39...', 'C:\\xampp\\htdocs...')
+#1 C:\xampp\htdocs\deployment-management\vendor\autoload.php(22): ComposerAutoloaderInitc514d8f7b9fc5970bdd94287905ef584::getLoader()
+#2 C:\xampp\htdocs\deployment-management\artisan(10): require('C:\\xampp\\htdocs...')
+#3 {main}
+  thrown in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php on line 41
+
+> Running: cd /d "C:\xampp\htdocs\deployment-management" && php artisan optimize:clear
+PHP Warning:  require(C:\xampp\htdocs\deployment-management\vendor\composer/../myclabs/deep-copy/src/DeepCopy/deep_copy.php): Failed to open stream: No such file or directory in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php on line 41
+
+Warning: require(C:\xampp\htdocs\deployment-management\vendor\composer/../myclabs/deep-copy/src/DeepCopy/deep_copy.php): Failed to open stream: No such file or directory in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php on line 41
+PHP Fatal error:  Uncaught Error: Failed opening required 'C:\xampp\htdocs\deployment-management\vendor\composer/../myclabs/deep-copy/src/DeepCopy/deep_copy.php' (include_path='C:\xampp\php\PEAR') in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php:41
+Stack trace:
+#0 C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php(45): {closure}('6124b4c8570aa39...', 'C:\\xampp\\htdocs...')
+#1 C:\xampp\htdocs\deployment-management\vendor\autoload.php(22): ComposerAutoloaderInitc514d8f7b9fc5970bdd94287905ef584::getLoader()
+#2 C:\xampp\htdocs\deployment-management\artisan(10): require('C:\\xampp\\htdocs...')
+#3 {main}
+  thrown in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php on line 41
+
+Fatal error: Uncaught Error: Failed opening required 'C:\xampp\htdocs\deployment-management\vendor\composer/../myclabs/deep-copy/src/DeepCopy/deep_copy.php' (include_path='C:\xampp\php\PEAR') in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php:41
+Stack trace:
+#0 C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php(45): {closure}('6124b4c8570aa39...', 'C:\\xampp\\htdocs...')
+#1 C:\xampp\htdocs\deployment-management\vendor\autoload.php(22): ComposerAutoloaderInitc514d8f7b9fc5970bdd94287905ef584::getLoader()
+#2 C:\xampp\htdocs\deployment-management\artisan(10): require('C:\\xampp\\htdocs...')
+#3 {main}
+  thrown in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php on line 41
+
+> Running: cd /d "C:\xampp\htdocs\deployment-management" && php artisan migrate --force
+PHP Warning:  require(C:\xampp\htdocs\deployment-management\vendor\composer/../myclabs/deep-copy/src/DeepCopy/deep_copy.php): Failed to open stream: No such file or directory in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php on line 41
+
+Warning: require(C:\xampp\htdocs\deployment-management\vendor\composer/../myclabs/deep-copy/src/DeepCopy/deep_copy.php): Failed to open stream: No such file or directory in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php on line 41
+PHP Fatal error:  Uncaught Error: Failed opening required 'C:\xampp\htdocs\deployment-management\vendor\composer/../myclabs/deep-copy/src/DeepCopy/deep_copy.php' (include_path='C:\xampp\php\PEAR') in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php:41
+Stack trace:
+#0 C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php(45): {closure}('6124b4c8570aa39...', 'C:\\xampp\\htdocs...')
+#1 C:\xampp\htdocs\deployment-management\vendor\autoload.php(22): ComposerAutoloaderInitc514d8f7b9fc5970bdd94287905ef584::getLoader()
+#2 C:\xampp\htdocs\deployment-management\artisan(10): require('C:\\xampp\\htdocs...')
+#3 {main}
+  thrown in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php on line 41
+
+Fatal error: Uncaught Error: Failed opening required 'C:\xampp\htdocs\deployment-management\vendor\composer/../myclabs/deep-copy/src/DeepCopy/deep_copy.php' (include_path='C:\xampp\php\PEAR') in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php:41
+Stack trace:
+#0 C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php(45): {closure}('6124b4c8570aa39...', 'C:\\xampp\\htdocs...')
+#1 C:\xampp\htdocs\deployment-management\vendor\autoload.php(22): ComposerAutoloaderInitc514d8f7b9fc5970bdd94287905ef584::getLoader()
+#2 C:\xampp\htdocs\deployment-management\artisan(10): require('C:\\xampp\\htdocs...')
+#3 {main}
+  thrown in C:\xampp\htdocs\deployment-management\vendor\composer\autoload_real.php on line 41
+
+✅ Deployment completed successfully!
