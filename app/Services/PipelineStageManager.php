@@ -12,11 +12,11 @@ class PipelineStageManager
      * Default pipeline stages configuration
      */
     protected array $defaultStages = [
-        // ['name' => 'checkout', 'display_name' => 'Code Checkout', 'order' => 1],
-        // ['name' => 'build', 'display_name' => 'Build', 'order' => 2],
-        // ['name' => 'test', 'display_name' => 'Run Tests', 'order' => 3],
-        // ['name' => 'security_scan', 'display_name' => 'Security Scan', 'order' => 4],
-        // ['name' => 'deploy', 'display_name' => 'Deploy', 'order' => 5],
+        ['name' => 'checkout', 'display_name' => 'Code Checkout', 'order' => 1],
+        ['name' => 'build', 'display_name' => 'Build', 'order' => 2],
+        ['name' => 'test', 'display_name' => 'Run Tests', 'order' => 3],
+        ['name' => 'security_scan', 'display_name' => 'Security Scan', 'order' => 4],
+        ['name' => 'deploy', 'display_name' => 'Deploy', 'order' => 5],
     ];
 
     /**

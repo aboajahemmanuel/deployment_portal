@@ -63,9 +63,10 @@ class DeploymentFileController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'server_path'  => ['required','string'], // e.g. \\10.10.15.59\c$\xampp\htdocs\dep_env
+            'server_path'  => ['required','string'], // e.g. \\10.10.16.47\c$\wamp64\www\dep_env
             'filename'     => ['required','string'], // e.g. example_deploy.php
-            'project_path' => ['required','string'], // e.g. C:\\xampp\\htdocs\\com_cal_deploy
+            'project_path' => ['required','string'], // e.g. C:\\wamp64\\www\\com_cal_deploy
+            'repo_url'     => ['nullable','string'],
         ]);
 
         $serverPath = rtrim($data['server_path'], "\\/ ");
@@ -77,8 +78,9 @@ class DeploymentFileController extends Controller
 
         $filename = $data['filename'];
         $projectPath = $data['project_path'];
+        $repoUrl = $data['repo_url'] ?? null;
 
-        $content = $this->renderDeploymentPhp($projectPath);
+        $content = $this->renderDeploymentPhp($projectPath, $repoUrl);
         $target = $serverPath . (str_ends_with($serverPath, '\\') ? '' : '\\') . $filename;
 
         try {
@@ -169,7 +171,7 @@ class DeploymentFileController extends Controller
         $full = base64_decode($data['file']);
         abort_unless($full && str_ends_with(strtolower($full), '.php'), 404);
         $dir = dirname($full);
-        abort_unless(str_contains(strtolower($dir), strtolower('\\\\10.10.15.59\\c$\\xampp\\htdocs\\dep_env')), 403);
+        abort_unless(str_contains(strtolower($dir), strtolower('\\\\10.10.16.47\\c$\\wamp64\\www\\dep_env')), 403);
 
         $ok = @unlink($full);
         if (!$ok) {
@@ -188,35 +190,68 @@ class DeploymentFileController extends Controller
         return $p;
     }
 
-    private function renderDeploymentPhp(string $projectPath): string
+    private function renderDeploymentPhp(string $projectPath, ?string $repoUrl = null): string
     {
         $escapedPath = addslashes($projectPath);
+        $escapedRepo = addslashes($repoUrl ?? '');
         // Build the PHP script content exactly like requested
         $php = <<<PHP
 <?php
 
 \$projectPath = '{$escapedPath}';
+\$repoUrl = '{$escapedRepo}';
 \$logFile = __DIR__ . '/deploy-log.txt';
-
 \$safeDir = str_replace('\\\\', '/', \$projectPath);
 
-\$commands = [
-    "git config --global --add safe.directory {\$safeDir}",
-    "cd /d {\$projectPath} && git pull origin main",
-    "cd /d {\$projectPath} && php artisan cache:clear",
-    "cd /d {\$projectPath} && php artisan config:cache",
-    "cd /d {\$projectPath} && php artisan route:cache",
-    "cd /d {\$projectPath} && php artisan optimize:clear",
-];
+\$output = "🚀 Deployment started in {\$projectPath}\n\n";
 
-\$output = "\xF0\x9F\x9A\x80 Deployment started in {\$projectPath}\n\n";
+if (!is_dir(\$projectPath)) {
+    // Folder doesn't exist — create it and clone project
+    if (empty(\$repoUrl)) {
+        \$output .= "❌ Repo URL missing. Cannot clone repository. Provide 'repo_url' when generating this file.\n";
+        mkdir(\$projectPath, 0777, true);
+        \$commands = [
+            "git config --global --add safe.directory {\$safeDir}",
+        ];
+    } else {
+        \$output .= "📁 Project folder not found. Creating folder and cloning repository...\n";
+        mkdir(\$projectPath, 0777, true);
+        \$commands = [
+            "git config --global --add safe.directory {\$safeDir}",
+            "cd /d {\$projectPath} && git clone {\$repoUrl} .",
+            "cd /d {\$projectPath} && php artisan key:generate",
+            "cd /d {\$projectPath} && composer install",
+            "cd /d {\$projectPath} && php artisan migrate --force",
+            "cd /d {\$projectPath} && php artisan optimize:clear",
+            "cd /d {\$projectPath} && php artisan cache:clear",
+            "cd /d {\$projectPath} && php artisan config:cache",
+            "cd /d {\$projectPath} && php artisan route:cache",
+        ];
+    }
+} else {
+    // Folder exists — just pull latest updates
+    \$output .= "📦 Folder exists. Pulling latest changes...\n";
+    \$commands = [
+        "cd /d {\$projectPath} && git config --local --add safe.directory {\$safeDir}",
+        "cd /d {\$projectPath} && git fetch origin main",
+        "cd /d {\$projectPath} && git pull origin main",
+        "cd /d {\$projectPath} && composer install --no-interaction --prefer-dist --optimize-autoloader",
+        "cd /d {\$projectPath} && php artisan migrate --force",
+        "cd /d {\$projectPath} && php artisan optimize:clear",
+        "cd /d {\$projectPath} && php artisan cache:clear",
+        "cd /d {\$projectPath} && php artisan config:cache",
+        "cd /d {\$projectPath} && php artisan route:cache",
+    ];
+}
 
+// Execute each command and capture output
 foreach (\$commands as \$cmd) {
     \$output .= "> Running: {\$cmd}\n";
     \$result = shell_exec(\$cmd . ' 2>&1');
-    \$output .= \$result . "\n";
+    \$output .= \$result ? \$result . "\n" : "❌ Command failed: {\$cmd}\n\n";
 }
 
+// Save to log and display nicely
 file_put_contents(\$logFile, \$output, FILE_APPEND);
 echo nl2br(\$output);
 PHP;

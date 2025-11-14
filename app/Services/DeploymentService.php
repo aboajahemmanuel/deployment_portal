@@ -297,17 +297,45 @@ class DeploymentService implements DeploymentServiceInterface
         $logger->logHttpRequest($project->deploy_endpoint, 'GET', [], $params);
 
         $response = Http::withToken($project->access_token)
-            ->timeout(300)
             ->withOptions(['verify' => false])
+            ->connectTimeout(30)   // connect timeout
+            ->timeout(600)         // extend total timeout for first-time deployments
+            ->retry(3, 2000)       // 3 retries, 2s apart
             ->get($project->deploy_endpoint, $params);
 
-        $logger->logHttpResponse($response->status(), $response->body(), $response->headers());
+        $responseBody = (string) $response->body();
+        $logger->logHttpResponse($response->status(), $responseBody, $response->headers());
 
-        if ($response->successful()) {
-            $commitHash = $this->extractCommitHash($response->body());
+        // Heuristic success detection matching DeploymentController
+        $lowerBody = is_string($responseBody) ? strtolower($responseBody) : '';
+        $markerSuccess = (bool) (preg_match('/deployment_status\s*=\s*success/i', (string) $responseBody)
+            || str_contains($lowerBody, '✅ deployment finished successfully')
+            || str_contains($lowerBody, 'deployment finished successfully')
+            || str_contains($lowerBody, 'deployment started'));
+        $looksSuccessful = is_string($responseBody)
+            && $markerSuccess
+            && !str_contains($lowerBody, '❌ command failed')
+            && !str_contains($lowerBody, 'fatal error');
+
+        // Header-based success (from generated script)
+        $headerSuccess = false;
+        $headers = $response->headers();
+        if (is_array($headers)) {
+            foreach ($headers as $hKey => $hVal) {
+                $keyLower = strtolower((string) $hKey);
+                $valStr = is_array($hVal) ? strtolower(implode(',', $hVal)) : strtolower((string) $hVal);
+                if (in_array($keyLower, ['x-deployment-status','x-deploy-status','x-status'], true) && str_contains($valStr, 'success')) {
+                    $headerSuccess = true;
+                    break;
+                }
+            }
+        }
+
+        if ($response->successful() || $looksSuccessful || $headerSuccess) {
+            $commitHash = $this->extractCommitHash($responseBody);
             return [
                 'success' => true,
-                'output' => $response->body(),
+                'output' => $responseBody,
                 'commit_hash' => $commitHash,
             ];
         }
@@ -316,7 +344,7 @@ class DeploymentService implements DeploymentServiceInterface
             'success' => false,
             'output' => json_encode([
                 'status_code' => $response->status(),
-                'response_body' => $response->body(),
+                'response_body' => $responseBody,
             ]),
             'commit_hash' => null,
         ];

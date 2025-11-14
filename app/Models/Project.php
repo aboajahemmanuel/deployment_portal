@@ -25,6 +25,9 @@ class Project extends Model
         'description',
         'is_active',
         'user_id',
+        'project_type',
+        'env_variables',
+        'application_url',
     ];
 
     /**

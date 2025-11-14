@@ -145,79 +145,41 @@ Never
 </div>
 </div>
 
-<div class="mt-4 d-flex justify-content-between">
-<a href="{{ route('deployments.show', $project) }}" class="btn btn-light">
-<em class="icon ni ni-eye"></em>
-<span>View Details</span>
-</a>
-
-{{-- @can('deploy', $project)
-@if($project->is_active)
-<button
-onclick="deployProject({{ $project->id }})"
-class="btn btn-primary">
-<em class="icon ni ni-send"></em>
-<span>Deploy</span>
-</button>
-@else
-<button
-disabled
-class="btn btn-secondary">
-<em class="icon ni ni-send"></em>
-<span>Inactive</span>
-</button>
-@endif
-@endcan --}}
-</div>
-</div>
-</div>
-</div>
-@empty
-<div class="col-12">
-<div class="card card-bordered">
-<div class="card-inner">
-<div class="text-center py-5">
-<em class="icon icon-lg ni ni-package text-muted mb-3"></em>
-<h5>No projects found</h5>
-<p class="text-muted">Get started by adding a new project.</p>
-@can('create', App\Models\Project::class)
-<a href="{{ route('deployments.create') }}" class="btn btn-primary">
-<em class="icon ni ni-plus"></em>
-<span>Add Project</span>
-</a>
-@endcan
-</div>
-</div>
-</div>
-</div>
-@endforelse
-</div>
+                    <div class="mt-4 d-flex justify-content-between">
+                        <a href="{{ route('deployments.show', $project) }}" class="btn btn-light">
+                            <em class="icon ni ni-eye"></em>
+                            <span>View Details</span>
+                        </a>
+                        @if(!empty($project->application_url))
+                        <a href="{{ $project->application_url }}" target="_blank" rel="noopener" class="btn btn-success">
+                            <em class="icon ni ni-external"></em>
+                            <span>Open App</span>
+                        </a>
+                        @endif
+                    </div>
+                </div>
+            </div>
+        </div>
+        @empty
+        <div class="col-12">
+            <div class="card card-bordered">
+                <div class="card-inner">
+                    <div class="text-center py-5">
+                        <em class="icon icon-lg ni ni-package text-muted mb-3"></em>
+                        <h5>No projects found</h5>
+                        <p class="text-muted">Get started by adding a new project.</p>
+                        @can('create', App\Models\Project::class)
+                        <a href="{{ route('deployments.create') }}" class="btn btn-primary">
+                            <em class="icon ni ni-plus"></em>
+                            <span>Add Project</span>
+                        </a>
+                        @endcan
+                    </div>
+                </div>
+            </div>
+        </div>
+        @endforelse
+    </div>
 </div>
 
-<script>
-function deployProject(projectId) {
-confirmAction('Are you sure you want to deploy this project?', function() {
-fetch(`/deployments/${projectId}/deploy`, {
-method: 'POST',
-headers: {
-'Content-Type': 'application/json',
-'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-},
-})
-.then(response => response.json())
-.then(data => {
-if (data.success) {
-showSuccessMessage('Deployment started successfully!');
-window.location.reload();
-} else {
-showErrorMessage('Deployment failed: ' + data.message);
-}
-})
-.catch(error => {
-console.error('Error:', error);
-showErrorMessage('An error occurred while deploying the project.');
-});
-});
-}
-</script>
 @endsection

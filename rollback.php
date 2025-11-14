@@ -7,17 +7,26 @@ $projectPath = realpath(__DIR__);
 $logFile = __DIR__ . '/rollback-log.txt';
 
 // Get request data - handle both GET parameters and JSON body
+// Read input robustly
 $input = [];
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_SERVER['CONTENT_TYPE']) && strpos($_SERVER['CONTENT_TYPE'], 'application/json') !== false) {
-    // Handle JSON POST data
-    $input = json_decode(file_get_contents('php://input'), true);
-} else {
-    // Handle GET parameters or form data
-    $input = $_GET;
+$rawBody = file_get_contents('php://input');
+$contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && stripos($contentType, 'application/json') !== false) {
+    $decoded = json_decode($rawBody, true);
+    if (is_array($decoded)) { $input = $decoded; }
 }
+// Merge with POST/GET fallback
+$input = array_merge($_GET ?? [], $_POST ?? [], $input);
+// Log received input keys for diagnostics
+@file_put_contents($logFile, "[" . date('Y-m-d H:i:s') . "] Received keys: " . implode(',', array_keys($input)) . "\n", FILE_APPEND);
 
-$isRollback = isset($input['rollback']) && $input['rollback'] === true;
-$targetCommit = $input['rollback_target_commit'] ?? null;
+$isRollback = false;
+if (isset($input['rollback'])) {
+    $val = $input['rollback'];
+    $isRollback = ($val === true || $val === 1 || $val === '1' || $val === 'true' || $val === 'on');
+}
+$targetCommit = $input['rollback_target_commit'] ?? ($input['commit_hash'] ?? null);
+
 $rollbackReason = $input['rollback_reason'] ?? 'No reason provided';
 
 // Check for authorization token

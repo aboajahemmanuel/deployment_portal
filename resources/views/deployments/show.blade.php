@@ -32,6 +32,12 @@
                         <span>Edit</span>
                     </a>
                     @endcan
+                    @if(!empty($project->application_url))
+                    <a href="{{ $project->application_url }}" target="_blank" rel="noopener" class="btn btn-sm btn-success ms-2">
+                        <em class="icon ni ni-external"></em>
+                        <span>Open App</span>
+                    </a>
+                    @endif
                  
 
                     @can('delete', $project)
@@ -66,6 +72,18 @@
                                         <label class="form-label">Deploy Endpoint</label>
                                         <div class="form-control-wrap">
                                             <div class="form-text">{{ $project->deploy_endpoint }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-sm-6">
+                                    <div class="form-group">
+                                        <label class="form-label">Application URL</label>
+                                        <div class="form-control-wrap">
+                                            @if(!empty($project->application_url))
+                                                <div class="form-text"><a href="{{ $project->application_url }}" target="_blank" rel="noopener">{{ $project->application_url }}</a></div>
+                                            @else
+                                                <div class="form-text text-muted">Not set</div>
+                                            @endif
                                         </div>
                                     </div>
                                 </div>
@@ -115,6 +133,12 @@
                                             <em class="icon ni ni-send"></em>
                                             <span>Deploy Now</span>
                                         </button>
+                                        @if(!empty($project->application_url))
+                                        <a href="{{ $project->application_url }}" target="_blank" rel="noopener" class="btn btn-success btn-lg ms-2">
+                                            <em class="icon ni ni-external"></em>
+                                            <span>Open App</span>
+                                        </a>
+                                        @endif
                                         <a href="{{ route('deployments.commits', $project) }}" class="btn btn-outline-secondary btn-lg">
                                             <em class="icon ni ni-list-index"></em>
                                             <span>View Commit History</span>
@@ -299,9 +323,36 @@ function deployProject(projectId) {
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
             },
         })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
+        .then(async (response) => {
+            const raw = await response.text();
+            let data = null;
+            try { data = JSON.parse(raw); } catch (_) { /* not JSON, fall through */ }
+            const looksSuccessful = typeof raw === 'string'
+              && (
+                raw.includes('DEPLOYMENT_STATUS=success')
+                || raw.includes('✅ Deployment finished successfully')
+                || raw.includes('Deployment started')
+              )
+              && !raw.includes('❌ Command failed')
+              && raw.toLowerCase().indexOf('fatal error') === -1;
+            let success = (data && data.success === true) || looksSuccessful;
+            const runIdMatch = raw.match(/\[run_id:([^\]]+)\]/) || raw.match(/Run ID:\s*([0-9_\-]+)/);
+            const runId = runIdMatch ? runIdMatch[1] : null;
+            // If not successful yet but backend provided remote response_body, re-evaluate success based on it
+            if (!success && data && typeof data.response_body === 'string') {
+                const rb = data.response_body;
+                const rbLower = rb.toLowerCase();
+                const looksSuccessfulFromRB = (
+                    /deployment_status\s*=\s*success/i.test(rb)
+                    || rbLower.includes('✅ deployment finished successfully')
+                    || rbLower.includes('deployment finished successfully')
+                    || rbLower.includes('deployment started')
+                ) && !rbLower.includes('❌ command failed') && rbLower.indexOf('fatal error') === -1;
+                if (looksSuccessfulFromRB) {
+                    success = true;
+                }
+            }
+            if (success) {
                 // Hide full page loader first
                 hidePageDeploymentLoader();
                 
@@ -313,6 +364,8 @@ function deployProject(projectId) {
                         <div class="text-start">
                             <p class="mb-2"><strong>Project:</strong> {{ $project->name }}</p>
                             <p class="mb-2"><strong>Status:</strong> <span class="badge bg-success">Completed</span></p>
+                            ${runId ? `<p class=\"mb-2\"><strong>Run ID:</strong> ${runId}</p>` : ''}
+                            ${`{{ !empty($project->application_url) ? 1 : 0 }}` == '1' ? `<p class=\"mb-2\"><strong>Open App:</strong> <a href=\"{{ $project->application_url }}\" target=\"_blank\" rel=\"noopener\">{{ $project->application_url }}</a></p>` : ''}
                             <p class="mb-0"><strong>Time:</strong> ${new Date().toLocaleString()}</p>
                         </div>
                     `,
@@ -335,6 +388,10 @@ function deployProject(projectId) {
                 hidePageDeploymentLoader();
                 
                 // Show enhanced error message for deployment failure
+                const logFromJson = data && data.log ? (typeof data.log === 'string' ? data.log : JSON.stringify(data.log)) : null;
+                const responseBodyFromJson = (data && data.response_body) ? data.response_body : null;
+                const errorDetailRaw = logFromJson || responseBodyFromJson || raw;
+                const errorExcerpt = (typeof errorDetailRaw === 'string') ? errorDetailRaw.substring(0, 500) : String(errorDetailRaw).substring(0, 500);
                 Swal.fire({
                     icon: 'error',
                     title: '❌ Deployment Failed!',
@@ -342,7 +399,9 @@ function deployProject(projectId) {
                         <div class="text-start">
                             <p class="mb-2"><strong>Project:</strong> {{ $project->name }}</p>
                             <p class="mb-2"><strong>Status:</strong> <span class="badge bg-danger">Failed</span></p>
-                            <p class="mb-2"><strong>Error:</strong> ${data.message}</p>
+                            <p class="mb-2"><strong>Error:</strong></p>
+                            <pre style="white-space:pre-wrap;max-height:240px;overflow:auto;border:1px solid #eee;padding:8px;border-radius:4px;background:#fafafa;">${errorExcerpt}</pre>
+                            <p class="text-muted small mb-2">HTTP Status: ${response.status}</p>
                             <p class="mb-0"><strong>Time:</strong> ${new Date().toLocaleString()}</p>
                         </div>
                     `,

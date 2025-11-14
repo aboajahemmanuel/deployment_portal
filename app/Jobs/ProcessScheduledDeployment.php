@@ -130,8 +130,16 @@ class ProcessScheduledDeployment implements ShouldQueue
                 ])
                 ->post($project->deploy_endpoint, $deploymentData);
             
-            $isSuccessful = $response->successful();
-            $responseBody = $response->body();
+            $responseBody = (string) $response->body();
+            $looksSuccessful = is_string($responseBody)
+                && (
+                    str_contains($responseBody, 'DEPLOYMENT_STATUS=success')
+                    || str_contains($responseBody, '✅ Deployment finished successfully')
+                    || str_contains($responseBody, 'Deployment started')
+                )
+                && !str_contains($responseBody, '❌ Command failed')
+                && !str_contains(strtolower($responseBody), 'fatal error');
+            $isSuccessful = $response->successful() || $looksSuccessful;
 
             // Log the response from endpoint for diagnostics
             Log::info('Scheduled deployment: received response from deploy endpoint', [
@@ -162,9 +170,15 @@ class ProcessScheduledDeployment implements ShouldQueue
             }
 
             // Update the existing deployment record
+            // Try to extract run id for traceability
+            $runId = null;
+            if (preg_match('/Run ID:\s*([0-9_\-]+)/', (string) $responseBody, $m)) {
+                $runId = $m[1];
+            }
+
             $deployment->update([
                 'status' => $isSuccessful ? 'success' : 'failed',
-                'log_output' => $responseBody,
+                'log_output' => ($runId ? ("[run_id:".$runId."]\n") : '') . $responseBody,
                 'completed_at' => now(),
                 'commit_hash' => $commitHash ?? $deployment->commit_hash,
             ]);

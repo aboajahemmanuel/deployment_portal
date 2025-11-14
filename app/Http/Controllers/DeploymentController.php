@@ -77,11 +77,16 @@ class DeploymentController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'repository_url' => 'required|url',
-            'deploy_endpoint' => 'required|url',
+            'deploy_endpoint' => 'required|string',
             'rollback_endpoint' => 'nullable|url',
             'access_token' => 'required|string',
             'current_branch' => 'required|string|max:255',
             'description' => 'nullable|string',
+            'project_type' => 'nullable|string|in:laravel,nodejs,php,other',
+            'env_variables' => 'nullable|string',
+            // Optional server fields for deployment file generation
+            'server_unc_base' => 'nullable|string',
+            'windows_project_path' => 'nullable|string',
         ]);
 
         // Assign project to current user if they're a developer
@@ -90,7 +95,84 @@ class DeploymentController extends Controller
             $validated['user_id'] = $user->id;
         }
 
+        // Build deploy endpoint URL and filename from provided text
+        $endpointRaw = trim((string)$validated['deploy_endpoint']);
+        $endpointSlug = strtolower(preg_replace('/[^a-zA-Z0-9_-]+/', '-', $endpointRaw));
+        $endpointSlug = trim($endpointSlug, '-_');
+        if ($endpointSlug === '') {
+            $fallbackSlug = strtolower(preg_replace('/[^a-zA-Z0-9_-]+/', '-', $validated['name']));
+            $endpointSlug = trim($fallbackSlug, '-_');
+            if ($endpointSlug === '') {
+                $endpointSlug = 'deploy';
+            }
+        }
+        $fileName = $endpointSlug . '.php';
+        $rollbackFileName = $endpointSlug . '_rollback.php';
+        $deployBase = rtrim('http://101-php-01.fmdqgroup.com/dep_env/', '/');
+        $validated['deploy_endpoint'] = $deployBase . '/' . $fileName;
+        // Also prefill rollback endpoint alongside deploy endpoint
+        $validated['rollback_endpoint'] = $deployBase . '/' . $rollbackFileName;
+
+        // Auto-generate application URL from project name
+        $nameSlug = strtolower(preg_replace('/[^a-zA-Z0-9_-]+/', '-', trim((string)$validated['name'])));
+        $nameSlug = trim($nameSlug, '-_');
+        if ($nameSlug === '') {
+            $nameSlug = 'app';
+        }
+        $appBase = rtrim('http://101-php-01.fmdqgroup.com', '/');
+        $validated['application_url'] = $appBase . '/' . $nameSlug;
+
         $project = Project::create($validated);
+
+        // Generate deployment and rollback files at project creation
+        try {
+            // Use the provided deployment endpoint text (slug) to name the file
+            // $fileName already computed above
+
+            // UNC base directory (default to the one used in the admin tool) - overridable from form
+            $uncBase = $validated['server_unc_base'] ?? '\\10.10.15.59\\c$\\xampp\\htdocs\\dep_env';
+
+            // Windows project path convention (e.g., C:\\wamp64\\www\\<slug>_deploy) - overridable from form
+            $windowsProjectPath = $validated['windows_project_path'] ?? null;
+            if (empty($windowsProjectPath)) {
+                $slug = str_replace([' ', '/','\\'], ['-','-','-'], strtolower($project->name));
+                $windowsProjectPath = 'C:\\xampp\\htdocs\\' . $slug . '_deploy';
+            }
+
+            // Generate content using the same generator as admin tool
+            $generator = new \App\Services\DeploymentFileGenerator();
+            $content = $generator->make(
+                $windowsProjectPath, 
+                $project->repository_url,
+                $project->project_type ?? 'laravel',
+                $project->env_variables
+            );
+            // Generate rollback script content
+            $rollbackContent = $generator->makeRollback($windowsProjectPath);
+
+            // Ensure UNC path formatting
+            $uncBase = rtrim(str_replace('/', '\\', $uncBase), "\\/ ");
+            if (!str_starts_with($uncBase, '\\\\')) {
+                $uncBase = '\\\\' . ltrim($uncBase, '\\\\');
+            }
+            $targetBase = $uncBase . (str_ends_with($uncBase, '\\') ? '' : '\\');
+            $targetPath = $targetBase . $fileName;
+            $rollbackTargetPath = $targetBase . $rollbackFileName;
+
+            // Attempt write
+            @file_put_contents($targetPath, $content);
+            @file_put_contents($rollbackTargetPath, $rollbackContent);
+            \Log::info('Deployment file created at project create', [
+                'project_id' => $project->id,
+                'target' => $targetPath,
+                'rollback_target' => $rollbackTargetPath,
+            ]);
+        } catch (\Throwable $e) {
+            \Log::warning('Failed to create deployment file on project create', [
+                'project_id' => $project->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         return redirect()->route('deployments.index')
             ->with('success', 'Project created successfully.');
@@ -136,6 +218,15 @@ class DeploymentController extends Controller
             'is_active' => 'boolean',
         ]);
 
+        // Auto-regenerate application URL from (possibly updated) project name
+        $nameSlug = strtolower(preg_replace('/[^a-zA-Z0-9_-]+/', '-', trim((string)$validated['name'])));
+        $nameSlug = trim($nameSlug, '-_');
+        if ($nameSlug === '') {
+            $nameSlug = 'app';
+        }
+        $appBase = rtrim('http://101-php-01.fmdqgroup.com', '/');
+        $validated['application_url'] = $appBase . '/' . $nameSlug;
+
         $project->update($validated);
 
         return redirect()->route('deployments.index')
@@ -176,7 +267,14 @@ class DeploymentController extends Controller
         ]);
 
         // Create pipeline stages for this deployment
-        app(\App\Services\PipelineStageManager::class)->createStagesForDeployment($deployment);
+        try {
+            app(\App\Services\PipelineStageManager::class)->createStagesForDeployment($deployment);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to create pipeline stages', [
+                'deployment_id' => $deployment->id,
+                'error' => $e->getMessage()
+            ]);
+        }
 
         // Create a logger for this deployment
         $logger = new DeploymentLogger($deployment);
@@ -206,75 +304,124 @@ class DeploymentController extends Controller
             // Log the HTTP request details
             $logger->logHttpRequest($project->deploy_endpoint, 'GET', [], $params);
 
+            // Ensure this controller action can run long enough for the remote deployment to complete
+            // Avoid hitting PHP's default 60s max execution time when waiting on the remote server
+            try {
+                @set_time_limit(0);
+                @ini_set('max_execution_time', '0');
+                // Increase default socket timeout to match the HTTP client timeout window
+                @ini_set('default_socket_timeout', '600');
+            } catch (\Throwable $e) {
+                // Non-fatal: continue with best-effort
+            }
+
             // Send request to deploy endpoint with SSL verification options
             $response = Http::withToken($project->access_token)
-                ->timeout(300) // 5 minute timeout
+                ->timeout(600) // 10 minute timeout to accommodate first deploys
                 ->withOptions([
-                    'verify' => false, // Disable SSL verification for now - in production, you should properly configure SSL certificates
+                    'verify' => false,
                 ])
                 ->get($project->deploy_endpoint, $params);
 
             // Log the response details
             $logger->logHttpResponse($response->status(), $response->body(), $response->headers());
 
-            if ($response->successful()) {
-                // Parse the response to extract commit hash if available
-                $commitHash = null;
-                $responseBody = $response->body();
-                
-                // Try to decode as JSON first
-                $responseData = json_decode($responseBody, true);
-                if (is_array($responseData) && isset($responseData['commit_hash'])) {
-                    $commitHash = $responseData['commit_hash'];
-                } else {
-                    // If not JSON or no commit_hash in JSON, try to extract from text
-                    // Look for commit hash pattern (40 character hex string)
-                    if (preg_match('/([a-f0-9]{40})/', $responseBody, $matches)) {
-                        $commitHash = $matches[1];
-                    } else {
-                        // Try to extract from git pull output (short hash format)
-                        // Look for pattern like "Updating 3ed7b78..c8f2f0a" and take the second hash
-                        if (preg_match('/Updating [a-f0-9]{7,40}\.\.([a-f0-9]{7,40})/', $responseBody, $matches)) {
-                            $commitHash = $matches[1];
-                        } else {
-                            // Try to extract short commit hash from "HEAD is now at c9fbcb5" pattern
-                            if (preg_match('/HEAD is now at ([a-f0-9]{7,40})/', $responseBody, $matches)) {
-                                $commitHash = $matches[1];
-                            }
-                        }
+            $responseBody = $response->body();
+            
+            // Heuristic success detection
+            $lowerBody = is_string($responseBody) ? strtolower($responseBody) : '';
+            $markerSuccess = (bool) (preg_match('/deployment_status\s*=\s*success/i', (string) $responseBody)
+                || str_contains($lowerBody, '✅ deployment finished successfully')
+                || str_contains($lowerBody, 'deployment finished successfully')
+                || str_contains($lowerBody, 'deployment started'));
+            $looksSuccessful = is_string($responseBody)
+                && $markerSuccess
+                && !str_contains($lowerBody, '❌ command failed')
+                && !str_contains($lowerBody, 'fatal error');
+
+            // Header-based success override
+            $headerSuccess = false;
+            $headers = $response->headers();
+            if (is_array($headers)) {
+                foreach ($headers as $hKey => $hVal) {
+                    $keyLower = strtolower((string) $hKey);
+                    $valStr = is_array($hVal) ? strtolower(implode(',', $hVal)) : strtolower((string) $hVal);
+                    if (in_array($keyLower, ['x-deployment-status','x-deploy-status','x-status'], true) && str_contains($valStr, 'success')) {
+                        $headerSuccess = true;
+                        break;
                     }
                 }
+            }
+
+            // Determine if deployment was successful
+            $deploymentSuccessful = $response->successful() || $looksSuccessful || $headerSuccess;
+
+            if ($deploymentSuccessful) {
+                // Extract commit hash
+                $commitHash = $this->extractCommitHash($responseBody);
                 
+                // Extract run ID
+                $runId = null;
+                if (preg_match('/Run ID:\s*([0-9_\-]+)/', (string) $responseBody, $m)) {
+                    $runId = $m[1];
+                }
+
+                // Update deployment as successful
                 $deployment->update([
                     'status' => 'success',
                     'completed_at' => now(),
-                    'log_output' => $response->body(),
+                    'log_output' => ($runId ? ("[run_id:".$runId."]\n") : '') . $responseBody,
                     'commit_hash' => $commitHash,
                 ]);
                 
                 $logger->info('Deployment successful', [
                     'project_id' => $project->id,
                     'deployment_id' => $deployment->id,
-                    'response_body' => $response->body(),
                     'commit_hash' => $commitHash,
+                    'run_id' => $runId,
                 ]);
 
-                // Update pipeline stages to reflect successful deployment
-                $stageManager = app(\App\Services\PipelineStageManager::class);
-                $stageManager->simulateExecution($deployment);
-
-                // Run security scan after successful deployment
-                $this->runSecurityScan($deployment, $logger);
+                // Update pipeline stages - wrapped in try-catch
+                try {
+                    $stageManager = app(\App\Services\PipelineStageManager::class);
+                    $stageManager->simulateExecution($deployment);
+                } catch (\Throwable $stageEx) {
+                    $logger->error('Failed to update pipeline stages', [
+                        'deployment_id' => $deployment->id,
+                        'error' => $stageEx->getMessage(),
+                    ]);
+                }
                 
-                // Send success notification
-                $this->sendDeploymentNotification($deployment, 'success');
+                // Perform post-success tasks - wrapped in try-catch to prevent affecting response
+                try {
+                    $this->runSecurityScan($deployment, $logger);
+                } catch (\Throwable $scanEx) {
+                    $logger->error('Security scan failed', [
+                        'deployment_id' => $deployment->id,
+                        'error' => $scanEx->getMessage(),
+                        'trace' => $scanEx->getTraceAsString(),
+                    ]);
+                }
+
+                try {
+                    $this->sendDeploymentNotification($deployment, 'success');
+                } catch (\Throwable $notifEx) {
+                    $logger->error('Notification sending failed', [
+                        'deployment_id' => $deployment->id,
+                        'error' => $notifEx->getMessage(),
+                        'trace' => $notifEx->getTraceAsString(),
+                    ]);
+                }
                 
                 return response()->json([
                     'success' => true,
                     'message' => 'Deployment successful!',
-                    'log' => $response->body(),
+                    'log' => $responseBody,
+                    'deployment_id' => $deployment->id,
+                    'commit_hash' => $commitHash,
                 ]);
             } else {
+                // Deployment failed
                 $errorDetails = [
                     'status_code' => $response->status(),
                     'response_body' => $response->body(),
@@ -290,18 +437,34 @@ class DeploymentController extends Controller
                 
                 $logger->error('Deployment failed with HTTP error', $errorDetails);
 
-                // Update pipeline stages to reflect failed deployment
-                $stageManager = app(\App\Services\PipelineStageManager::class);
-                $stageManager->simulateExecution($deployment);
+                // Update pipeline stages
+                try {
+                    $stageManager = app(\App\Services\PipelineStageManager::class);
+                    $stageManager->simulateExecution($deployment);
+                } catch (\Throwable $stageEx) {
+                    $logger->error('Failed to update pipeline stages after failure', [
+                        'deployment_id' => $deployment->id,
+                        'error' => $stageEx->getMessage(),
+                    ]);
+                }
                 
                 // Send failure notification
-                $this->sendDeploymentNotification($deployment, 'failure');
+                try {
+                    $this->sendDeploymentNotification($deployment, 'failure');
+                } catch (\Throwable $notifEx) {
+                    $logger->error('Failed to send failure notification', [
+                        'deployment_id' => $deployment->id,
+                        'error' => $notifEx->getMessage(),
+                    ]);
+                }
                 
                 return response()->json([
                     'success' => false,
                     'message' => 'Deployment failed! HTTP Status: ' . $response->status(),
                     'log' => json_encode($errorDetails),
-                ], 500);
+                    'response_body' => $response->body(),
+                    'deployment_id' => $deployment->id,
+                ], 200); // Return 200 to avoid triggering client-side error handlers
             }
         } catch (\Exception $e) {
             $errorDetails = [
@@ -321,16 +484,26 @@ class DeploymentController extends Controller
             // Log the exception
             $logger->logException($e);
             
-            // Send failure notification
-            $this->sendDeploymentNotification($deployment, 'failure');
+            // Send failure notification - wrapped in try-catch
+            try {
+                $this->sendDeploymentNotification($deployment, 'failure');
+            } catch (\Throwable $notifEx) {
+                Log::error('Failed to send failure notification after exception', [
+                    'deployment_id' => $deployment->id,
+                    'original_error' => $e->getMessage(),
+                    'notification_error' => $notifEx->getMessage(),
+                ]);
+            }
             
             return response()->json([
                 'success' => false,
                 'message' => 'Deployment failed! Exception: ' . $e->getMessage(),
                 'log' => json_encode($errorDetails),
-            ], 500);
+                'deployment_id' => $deployment->id,
+            ], 200); // Return 200 to avoid triggering client-side error handlers
         }
     }
+
 
     /**
      * Trigger a rollback deployment for the specified project.
@@ -694,6 +867,35 @@ class DeploymentController extends Controller
         }
         
         return view('deployments.commits', compact('project', 'commits', 'error'));
+    }
+
+    /**
+     * Extract commit hash from a deployment response body.
+     */
+    private function extractCommitHash(string $responseBody): ?string
+    {
+        // Try JSON first
+        $responseData = json_decode($responseBody, true);
+        if (is_array($responseData) && isset($responseData['commit_hash'])) {
+            return $responseData['commit_hash'];
+        }
+
+        // Try regex patterns: full 40-char SHA first
+        if (preg_match('/([a-f0-9]{40})/i', $responseBody, $matches)) {
+            return $matches[1];
+        }
+
+        // Git pull update format: "Updating <old>.. <new>"
+        if (preg_match('/Updating\s+[a-f0-9]{7,40}\.\.([a-f0-9]{7,40})/i', $responseBody, $matches)) {
+            return $matches[1];
+        }
+
+        // Detached HEAD or reset format
+        if (preg_match('/HEAD is now at\s+([a-f0-9]{7,40})/i', $responseBody, $matches)) {
+            return $matches[1];
+        }
+
+        return null;
     }
 
     /**
