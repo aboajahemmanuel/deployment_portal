@@ -102,8 +102,8 @@ if (!is_dir($projectPath)) {
             }
         }
         
-        // After successful clone, create .env file if provided
-        if (!empty($envVariables)) {
+        // Create .env file if provided and project is Laravel
+        if (!empty($envVariables) && '__PROJECT_TYPE__' === 'laravel') {
             logLine("📝 Creating .env file...", $output, $logFile, $aggregateLog);
             $envPath = $projectPath . '\\.env';
             if (file_put_contents($envPath, $envVariables)) {
@@ -114,31 +114,66 @@ if (!is_dir($projectPath)) {
             }
         }
         
-        // Now run Laravel setup commands
-        $commands = [
+        // Setup commands based on project type
+        if ('__PROJECT_TYPE__' === 'laravel') {
+            // Laravel-specific setup commands
+            $commands = [
+                "cd /d {$projectPath} && composer install --no-interaction --prefer-dist --optimize-autoloader --no-progress",
+                "cd /d {$projectPath} && php artisan key:generate",
+                "cd /d {$projectPath} && php artisan migrate --force",
+                "cd /d {$projectPath} && php artisan optimize:clear",
+                "cd /d {$projectPath} && php artisan cache:clear",
+                "cd /d {$projectPath} && php artisan config:cache",
+                "cd /d {$projectPath} && php artisan route:cache",
+            ];
+        } elseif ('__PROJECT_TYPE__' === 'nodejs') {
+            // Node.js project setup
+            $commands = [
+                "cd /d {$projectPath} && npm install --no-audit --no-fund",
+                "cd /d {$projectPath} && npm run build --if-present",
+            ];
+        } elseif ('__PROJECT_TYPE__' === 'php') {
+            // Generic PHP project setup
+            $commands = [
+                "cd /d {$projectPath} && composer install --no-interaction --prefer-dist --optimize-autoloader --no-progress",
+            ];
+        } else {
+            // Static or other project types - no setup commands needed
+            $commands = [];
+        }
+    }
+} else {
+    // Folder exists — just pull latest updates
+    logLine("📦 Folder exists. Pulling latest changes...", $output, $logFile, $aggregateLog);
+    
+    // Base commands for all project types
+    $commands = [
+        "cd /d {$projectPath} && git config --local --add safe.directory {$safeDir}",
+        "cd /d {$projectPath} && git fetch origin main",
+        "cd /d {$projectPath} && git pull origin main",
+    ];
+    
+    // Add project-type specific commands
+    if ('__PROJECT_TYPE__' === 'laravel') {
+        $commands = array_merge($commands, [
             "cd /d {$projectPath} && composer install --no-interaction --prefer-dist --optimize-autoloader --no-progress",
-            "cd /d {$projectPath} && php artisan key:generate",
             "cd /d {$projectPath} && php artisan migrate --force",
             "cd /d {$projectPath} && php artisan optimize:clear",
             "cd /d {$projectPath} && php artisan cache:clear",
             "cd /d {$projectPath} && php artisan config:cache",
             "cd /d {$projectPath} && php artisan route:cache",
-        ];
+        ]);
+    } elseif ('__PROJECT_TYPE__' === 'nodejs') {
+        $commands = array_merge($commands, [
+            "cd /d {$projectPath} && npm install --no-audit --no-fund",
+            "cd /d {$projectPath} && npm run build --if-present",
+        ]);
+    } elseif ('__PROJECT_TYPE__' === 'php') {
+        $commands = array_merge($commands, [
+            "cd /d {$projectPath} && composer install --no-interaction --prefer-dist --optimize-autoloader --no-progress",
+        ]);
     }
-} else {
-    // Folder exists — just pull latest updates
-    logLine("📦 Folder exists. Pulling latest changes...", $output, $logFile, $aggregateLog);
-    $commands = [
-        "cd /d {$projectPath} && git config --local --add safe.directory {$safeDir}",
-        "cd /d {$projectPath} && git fetch origin main",
-        "cd /d {$projectPath} && git pull origin main",
-        "cd /d {$projectPath} && composer install --no-interaction --prefer-dist --optimize-autoloader --no-progress",
-        "cd /d {$projectPath} && php artisan migrate --force",
-        "cd /d {$projectPath} && php artisan optimize:clear",
-        "cd /d {$projectPath} && php artisan cache:clear",
-        "cd /d {$projectPath} && php artisan config:cache",
-        "cd /d {$projectPath} && php artisan route:cache",
-    ];
+    // For static or other project types, only git commands are needed
 }
 
 // Execute remaining commands and capture output
@@ -185,34 +220,64 @@ foreach ($commands as $cmd) {
     }
 }
 
-// Create public web alias so app is accessible under http://101-php-01.fmdqgroup.com/{slug}
+// Handle web accessibility based on project type
 $appSlug = null;
-if (preg_match('/([^\\\\\/]+)_deploy$/', $projectPath, $m)) {
-    $appSlug = $m[1];
+if ('__PROJECT_TYPE__' === 'laravel') {
+    // Laravel projects have _deploy suffix
+    if (preg_match('/([^\\\\\/]+)_deploy$/', $projectPath, $m)) {
+        $appSlug = $m[1];
+    }
+} else {
+    // Non-Laravel projects are deployed directly to web directory
+    if (preg_match('/([^\\\\\/]+)$/', $projectPath, $m)) {
+        $appSlug = $m[1];
+    }
 }
 
 if ($appSlug) {
     $htdocs = 'C:\\xampp\\htdocs';
-    $webDir = $htdocs . '\\' . $appSlug;
-    // Ensure web directory exists
-    if (!is_dir($webDir)) { @mkdir($webDir, 0777, true); }
+    
+    if ('__PROJECT_TYPE__' === 'laravel') {
+        // Laravel projects: Create separate web directory with index.php stub
+        $webDir = $htdocs . '\\' . $appSlug;
+        if (!is_dir($webDir)) { @mkdir($webDir, 0777, true); }
 
-    // index.php stub to forward into the deployed app's public/index.php
-    $publicIndex = str_replace('\\', '/', $projectPath) . '/public/index.php';
-    $indexStub = "<?php\nrequire '" . $publicIndex . "';\n";
-    @file_put_contents($webDir . '\\index.php', $indexStub);
+        // index.php stub to forward into the deployed app's public/index.php
+        $publicIndex = str_replace('\\', '/', $projectPath) . '/public/index.php';
+        $indexStub = "<?php\nrequire '" . $publicIndex . "';\n";
+        @file_put_contents($webDir . '\\index.php', $indexStub);
 
-    // Minimal .htaccess to route pretty URLs to index.php under /{slug}
-    $htaccess = "<IfModule mod_rewrite.c>\n" .
-                "RewriteEngine On\n" .
-                "RewriteBase /{$appSlug}/\n" .
-                "RewriteCond %{REQUEST_FILENAME} !-f\n" .
-                "RewriteCond %{REQUEST_FILENAME} !-d\n" .
-                "RewriteRule ^ index.php [L]\n" .
-                "</IfModule>\n";
-    @file_put_contents($webDir . '\\.htaccess', $htaccess);
+        // Minimal .htaccess to route pretty URLs to index.php under /{slug}
+        $htaccess = "<IfModule mod_rewrite.c>\n" .
+                    "RewriteEngine On\n" .
+                    "RewriteBase /{$appSlug}/\n" .
+                    "RewriteCond %{REQUEST_FILENAME} !-f\n" .
+                    "RewriteCond %{REQUEST_FILENAME} !-d\n" .
+                    "RewriteRule ^ index.php [L]\n" .
+                    "</IfModule>\n";
+        @file_put_contents($webDir . '\\.htaccess', $htaccess);
 
-    logLine("🌐 App URL prepared at http://101-php-01.fmdqgroup.com/{$appSlug}", $output, $logFile, $aggregateLog);
+        logLine("🌐 Laravel app URL prepared at http://101-php-01.fmdqgroup.com/{$appSlug}", $output, $logFile, $aggregateLog);
+        
+    } elseif ('__PROJECT_TYPE__' === 'static') {
+        // Static sites: Deploy directly to web directory (no _deploy suffix)
+        logLine("ℹ️ Static site deployed directly to web directory", $output, $logFile, $aggregateLog);
+        logLine("🌐 Static site URL: http://101-php-01.fmdqgroup.com/{$appSlug}", $output, $logFile, $aggregateLog);
+        
+    } elseif ('__PROJECT_TYPE__' === 'php') {
+        // Generic PHP projects: Deploy directly to web directory (no _deploy suffix)
+        logLine("ℹ️ PHP project deployed directly to web directory", $output, $logFile, $aggregateLog);
+        logLine("🌐 PHP app URL: http://101-php-01.fmdqgroup.com/{$appSlug}", $output, $logFile, $aggregateLog);
+        
+    } elseif ('__PROJECT_TYPE__' === 'nodejs') {
+        // Node.js projects: Note about manual server setup
+        logLine("ℹ️ Node.js project deployed. Manual server setup required on custom port.", $output, $logFile, $aggregateLog);
+        logLine("🌐 Project files available at: {$projectPath}", $output, $logFile, $aggregateLog);
+        
+    } else {
+        // Other project types
+        logLine("ℹ️ Project deployed to: {$projectPath}", $output, $logFile, $aggregateLog);
+    }
 } else {
     logLine("ℹ️ Could not derive app slug from project path '{$projectPath}'. Skipping web alias creation.", $output, $logFile, $aggregateLog);
 }
@@ -238,10 +303,12 @@ PHP;
             '__PROJECT_PATH__',
             '__REPO_URL__',
             '__ENV_VARS__',
+            '__PROJECT_TYPE__',
         ], [
             $escapedPath,
             $escapedRepo,
             $escapedEnv,
+            $projectType,
         ], $php);
         return $php;
     }

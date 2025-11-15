@@ -16,6 +16,7 @@ class Deployment extends Model
      */
     protected $fillable = [
         'project_id',
+        'environment_id',
         'user_id',
         'status',
         'log_output',
@@ -123,5 +124,13 @@ class Deployment extends Model
     public function securityScanResults()
     {
         return $this->hasMany(SecurityScanResult::class);
+    }
+
+    /**
+     * Get the environment for this deployment.
+     */
+    public function environment()
+    {
+        return $this->belongsTo(Environment::class);
     }
 }

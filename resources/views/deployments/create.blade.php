@@ -60,21 +60,10 @@
                     
                     <div class="col-12">
                         <div class="form-group">
-                            <label class="form-label" for="deploy_endpoint">Deploy Endpoint</label>
+                            <label class="form-label" for="deploy_endpoint">Deploy Endpoint Slug</label>
                             <div class="form-control-wrap">
                                 <input type="text" class="form-control" id="deploy_endpoint" name="deploy_endpoint" value="{{ old('deploy_endpoint') }}" required>
-                                <div class="form-text">The URL to the deploy.php script on the remote server</div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    
-                    <div class="col-12">
-                        <div class="form-group">
-                            <label class="form-label" for="rollback_endpoint">Rollback Endpoint (Optional)</label>
-                            <div class="form-control-wrap">
-                                <input type="url" class="form-control" id="rollback_endpoint" name="rollback_endpoint" value="{{ old('rollback_endpoint') }}">
-                                <div class="form-text">The URL to the rollback.php script on the remote server (if different from deploy endpoint)</div>
+                                <div class="form-text">Simple name for deployment files (e.g., "myproject"). Files will be created for all environments automatically.</div>
                             </div>
                         </div>
                     </div>
@@ -122,29 +111,10 @@
                         </div>
                     </div>
 
-                    <div class="col-12" style="display: none;">
+                    <div class="col-12">
                         <div class="alert alert-info">
-                            <strong>Server Details</strong> — Provide where to create the deployment file and the Windows project path used by the script. Leave blank to use defaults.
-                        </div>
-                    </div>
-
-                    <div class="col-md-6" style="display: none;">
-                        <div class="form-group">
-                            <label class="form-label" for="server_unc_base">UNC Base Directory (optional)</label>
-                            <div class="form-control-wrap">
-                                <input type="text" class="form-control" id="server_unc_base" name="server_unc_base" >
-                                <div class="form-text">Example: \\10.10.15.59\c$\xampp\htdocs\dep_env</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-md-6" style="display: none;">
-                        <div class="form-group">
-                            <label class="form-label" for="windows_project_path">Windows Project Path (optional)</label>
-                            <div class="form-control-wrap">
-                                <input type="text" class="form-control" id="windows_project_path" name="windows_project_path" value="{{ old('windows_project_path') }}" placeholder="C:\\wamp64\\www\\<slug>_deploy">
-                                <div class="form-text">If empty, it will default to C:\\wamp64\\www\\[project-name-slug]_deploy</div>
-                            </div>
+                            <h6 class="alert-heading"><em class="icon ni ni-info"></em> Multi-Environment Deployment</h6>
+                            <p class="mb-0">This project will be automatically configured for all active environments. Deployment files will be created for each environment (Development, Staging, Production) with environment-specific paths and URLs.</p>
                         </div>
                     </div>
                     

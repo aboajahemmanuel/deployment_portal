@@ -150,8 +150,13 @@ Never
                             <em class="icon ni ni-eye"></em>
                             <span>View Details</span>
                         </a>
-                        @if(!empty($project->application_url))
-                        <a href="{{ $project->application_url }}" target="_blank" rel="noopener" class="btn btn-success">
+                        @if($project->projectEnvironments->where('environment.slug', 'production')->first())
+                        <a href="{{ $project->projectEnvironments->where('environment.slug', 'production')->first()->application_url }}" target="_blank" rel="noopener" class="btn btn-success">
+                            <em class="icon ni ni-external"></em>
+                            <span>Open Production</span>
+                        </a>
+                        @elseif($project->projectEnvironments->first())
+                        <a href="{{ $project->projectEnvironments->first()->application_url }}" target="_blank" rel="noopener" class="btn btn-success">
                             <em class="icon ni ni-external"></em>
                             <span>Open App</span>
                         </a>

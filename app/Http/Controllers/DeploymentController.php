@@ -78,15 +78,12 @@ class DeploymentController extends Controller
             'name' => 'required|string|max:255',
             'repository_url' => 'required|url',
             'deploy_endpoint' => 'required|string',
-            'rollback_endpoint' => 'nullable|url',
             'access_token' => 'required|string',
             'current_branch' => 'required|string|max:255',
             'description' => 'nullable|string',
             'project_type' => 'nullable|string|in:laravel,nodejs,php,other',
             'env_variables' => 'nullable|string',
-            // Optional server fields for deployment file generation
-            'server_unc_base' => 'nullable|string',
-            'windows_project_path' => 'nullable|string',
+            'is_active' => 'boolean',
         ]);
 
         // Assign project to current user if they're a developer
@@ -95,7 +92,7 @@ class DeploymentController extends Controller
             $validated['user_id'] = $user->id;
         }
 
-        // Build deploy endpoint URL and filename from provided text
+        // Build endpoint slug from provided text
         $endpointRaw = trim((string)$validated['deploy_endpoint']);
         $endpointSlug = strtolower(preg_replace('/[^a-zA-Z0-9_-]+/', '-', $endpointRaw));
         $endpointSlug = trim($endpointSlug, '-_');
@@ -106,76 +103,105 @@ class DeploymentController extends Controller
                 $endpointSlug = 'deploy';
             }
         }
-        $fileName = $endpointSlug . '.php';
-        $rollbackFileName = $endpointSlug . '_rollback.php';
-        $deployBase = rtrim('http://101-php-01.fmdqgroup.com/dep_env/', '/');
-        $validated['deploy_endpoint'] = $deployBase . '/' . $fileName;
-        // Also prefill rollback endpoint alongside deploy endpoint
-        $validated['rollback_endpoint'] = $deployBase . '/' . $rollbackFileName;
 
-        // Auto-generate application URL from project name
-        $nameSlug = strtolower(preg_replace('/[^a-zA-Z0-9_-]+/', '-', trim((string)$validated['name'])));
-        $nameSlug = trim($nameSlug, '-_');
-        if ($nameSlug === '') {
-            $nameSlug = 'app';
-        }
-        $appBase = rtrim('http://101-php-01.fmdqgroup.com', '/');
-        $validated['application_url'] = $appBase . '/' . $nameSlug;
+        // Remove the hardcoded endpoint URLs - these will be generated per environment
+        unset($validated['deploy_endpoint']);
 
         $project = Project::create($validated);
 
-        // Generate deployment and rollback files at project creation
+        // Generate deployment and rollback files for ALL environments at project creation
         try {
-            // Use the provided deployment endpoint text (slug) to name the file
-            // $fileName already computed above
-
-            // UNC base directory (default to the one used in the admin tool) - overridable from form
-            $uncBase = $validated['server_unc_base'] ?? '\\10.10.15.59\\c$\\xampp\\htdocs\\dep_env';
-
-            // Windows project path convention (e.g., C:\\wamp64\\www\\<slug>_deploy) - overridable from form
-            $windowsProjectPath = $validated['windows_project_path'] ?? null;
-            if (empty($windowsProjectPath)) {
-                $slug = str_replace([' ', '/','\\'], ['-','-','-'], strtolower($project->name));
-                $windowsProjectPath = 'C:\\xampp\\htdocs\\' . $slug . '_deploy';
+            // Get all active environments
+            $environments = \App\Models\Environment::active()->ordered()->get();
+            
+            if ($environments->isEmpty()) {
+                Log::warning('No active environments found. Please seed environments first.');
             }
 
-            // Generate content using the same generator as admin tool
             $generator = new \App\Services\DeploymentFileGenerator();
-            $content = $generator->make(
-                $windowsProjectPath, 
-                $project->repository_url,
-                $project->project_type ?? 'laravel',
-                $project->env_variables
-            );
-            // Generate rollback script content
-            $rollbackContent = $generator->makeRollback($windowsProjectPath);
+            $slug = str_replace([' ', '/','\\'], ['-','-','-'], strtolower($project->name));
 
-            // Ensure UNC path formatting
-            $uncBase = rtrim(str_replace('/', '\\', $uncBase), "\\/ ");
-            if (!str_starts_with($uncBase, '\\\\')) {
-                $uncBase = '\\\\' . ltrim($uncBase, '\\\\');
+            foreach ($environments as $environment) {
+                try {
+                    // Generate environment-specific file names
+                    $envFileName = $endpointSlug . '_' . $environment->slug . '.php';
+                    $envRollbackFileName = $endpointSlug . '_' . $environment->slug . '_rollback.php';
+                    
+                    // Generate environment-specific project path based on project type
+                    $projectType = $project->project_type ?? 'laravel';
+                    if ($projectType === 'laravel') {
+                        // Laravel projects use separate _deploy directory
+                        $windowsProjectPath = $environment->server_base_path . '\\' . $slug . '_deploy';
+                    } else {
+                        // Non-Laravel projects deploy directly to web directory
+                        $windowsProjectPath = 'C:\\xampp\\htdocs\\' . $slug;
+                    }
+                    
+                    // Generate environment-specific URLs
+                    $deployEndpoint = rtrim($environment->deploy_endpoint_base, '/') . '/' . $envFileName;
+                    $rollbackEndpoint = rtrim($environment->deploy_endpoint_base, '/') . '/' . $envRollbackFileName;
+                    $applicationUrl = rtrim($environment->web_base_url, '/') . '/' . $slug;
+
+                    // Generate deployment file content
+                    $content = $generator->make(
+                        $windowsProjectPath, 
+                        $project->repository_url,
+                        $project->project_type ?? 'laravel',
+                        $project->env_variables
+                    );
+                    
+                    // Generate rollback script content
+                    $rollbackContent = $generator->makeRollback($windowsProjectPath);
+
+                    // Ensure UNC path formatting
+                    $uncBase = rtrim(str_replace('/', '\\', $environment->server_unc_path), "\\/ ");
+                    if (!str_starts_with($uncBase, '\\\\')) {
+                        $uncBase = '\\\\' . ltrim($uncBase, '\\\\');
+                    }
+                    $targetBase = $uncBase . (str_ends_with($uncBase, '\\') ? '' : '\\');
+                    $targetPath = $targetBase . $envFileName;
+                    $rollbackTargetPath = $targetBase . $envRollbackFileName;
+
+                    // Write deployment files
+                    @file_put_contents($targetPath, $content);
+                    @file_put_contents($rollbackTargetPath, $rollbackContent);
+                    
+                    // Create project environment record
+                    \App\Models\ProjectEnvironment::create([
+                        'project_id' => $project->id,
+                        'environment_id' => $environment->id,
+                        'deploy_endpoint' => $deployEndpoint,
+                        'rollback_endpoint' => $rollbackEndpoint,
+                        'application_url' => $applicationUrl,
+                        'project_path' => $windowsProjectPath,
+                        'env_variables' => $project->env_variables,
+                        'branch' => $project->current_branch,
+                        'is_active' => true,
+                    ]);
+
+                    Log::info('Deployment files created for environment', [
+                        'project_id' => $project->id,
+                        'environment' => $environment->name,
+                        'deploy_target' => $targetPath,
+                        'rollback_target' => $rollbackTargetPath,
+                    ]);
+                } catch (\Throwable $envError) {
+                    Log::error('Failed to create deployment files for environment', [
+                        'project_id' => $project->id,
+                        'environment' => $environment->name,
+                        'error' => $envError->getMessage(),
+                    ]);
+                }
             }
-            $targetBase = $uncBase . (str_ends_with($uncBase, '\\') ? '' : '\\');
-            $targetPath = $targetBase . $fileName;
-            $rollbackTargetPath = $targetBase . $rollbackFileName;
-
-            // Attempt write
-            @file_put_contents($targetPath, $content);
-            @file_put_contents($rollbackTargetPath, $rollbackContent);
-            \Log::info('Deployment file created at project create', [
-                'project_id' => $project->id,
-                'target' => $targetPath,
-                'rollback_target' => $rollbackTargetPath,
-            ]);
         } catch (\Throwable $e) {
-            \Log::warning('Failed to create deployment file on project create', [
+            Log::warning('Failed to create deployment files on project create', [
                 'project_id' => $project->id,
                 'error' => $e->getMessage(),
             ]);
         }
 
         return redirect()->route('deployments.index')
-            ->with('success', 'Project created successfully.');
+            ->with('success', 'Project created successfully! Deployment files have been generated for all active environments.');
     }
 
     /**
@@ -210,22 +236,13 @@ class DeploymentController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'repository_url' => 'required|url',
-            'deploy_endpoint' => 'required|url',
-            'rollback_endpoint' => 'nullable|url',
             'access_token' => 'required|string',
             'current_branch' => 'required|string|max:255',
             'description' => 'nullable|string',
+            'project_type' => 'nullable|string|in:laravel,nodejs,php,other',
+            'env_variables' => 'nullable|string',
             'is_active' => 'boolean',
         ]);
-
-        // Auto-regenerate application URL from (possibly updated) project name
-        $nameSlug = strtolower(preg_replace('/[^a-zA-Z0-9_-]+/', '-', trim((string)$validated['name'])));
-        $nameSlug = trim($nameSlug, '-_');
-        if ($nameSlug === '') {
-            $nameSlug = 'app';
-        }
-        $appBase = rtrim('http://101-php-01.fmdqgroup.com', '/');
-        $validated['application_url'] = $appBase . '/' . $nameSlug;
 
         $project->update($validated);
 
@@ -249,7 +266,7 @@ class DeploymentController extends Controller
     /**
      * Trigger a deployment for the specified project.
      */
-    public function deploy(Project $project)
+    public function deploy(Request $request, Project $project)
     {
         try {
             $this->authorize('deploy', $project);
@@ -257,9 +274,28 @@ class DeploymentController extends Controller
             return redirect()->back()->with('error', 'You are not authorized to deploy this project. Only project owners and administrators can trigger deployments.');
         }
         
-        // Create deployment record
+        // Validate environment selection
+        $validated = $request->validate([
+            'environment_id' => 'required|exists:environments,id',
+        ]);
+
+        // Get the project environment configuration
+        $projectEnvironment = \App\Models\ProjectEnvironment::where('project_id', $project->id)
+            ->where('environment_id', $validated['environment_id'])
+            ->where('is_active', true)
+            ->first();
+
+        if (!$projectEnvironment) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Project is not configured for the selected environment.',
+            ], 400);
+        }
+
+        // Create deployment record with environment
         $deployment = Deployment::create([
             'project_id' => $project->id,
+            'environment_id' => $validated['environment_id'],
             'user_id' => Auth::id(),
             'commit_hash' => 'pending',
             'status' => 'processing',
@@ -284,7 +320,9 @@ class DeploymentController extends Controller
             $logger->info('Deployment attempt started', [
                 'project_id' => $project->id,
                 'project_name' => $project->name,
-                'deploy_endpoint' => $project->deploy_endpoint,
+                'environment_id' => $projectEnvironment->environment_id,
+                'environment_name' => $projectEnvironment->environment->name,
+                'deploy_endpoint' => $projectEnvironment->deploy_endpoint,
                 'user_id' => Auth::id(),
                 'user_name' => Auth::user()->name,
                 'deployment_id' => $deployment->id,
@@ -293,16 +331,17 @@ class DeploymentController extends Controller
             // Prepare request parameters
             $params = [
                 'project_id' => $project->id,
-                'branch' => $project->current_branch,
+                'branch' => $projectEnvironment->branch,
                 'user_id' => Auth::id(),
                 'deployment_id' => $deployment->id,
+                'environment_id' => $projectEnvironment->environment_id,
             ];
 
             // Log the parameters being sent
             $logger->info('Sending deployment request with parameters', $params);
 
             // Log the HTTP request details
-            $logger->logHttpRequest($project->deploy_endpoint, 'GET', [], $params);
+            $logger->logHttpRequest($projectEnvironment->deploy_endpoint, 'GET', [], $params);
 
             // Ensure this controller action can run long enough for the remote deployment to complete
             // Avoid hitting PHP's default 60s max execution time when waiting on the remote server
@@ -321,7 +360,7 @@ class DeploymentController extends Controller
                 ->withOptions([
                     'verify' => false,
                 ])
-                ->get($project->deploy_endpoint, $params);
+                ->get($projectEnvironment->deploy_endpoint, $params);
 
             // Log the response details
             $logger->logHttpResponse($response->status(), $response->body(), $response->headers());
@@ -531,9 +570,23 @@ class DeploymentController extends Controller
         // Get rollback reason from request
         $rollbackReason = $request->input('reason', 'Rollback initiated by user');
 
+        // Get the project environment configuration for the target deployment's environment
+        $projectEnvironment = \App\Models\ProjectEnvironment::where('project_id', $project->id)
+            ->where('environment_id', $targetDeployment->environment_id)
+            ->where('is_active', true)
+            ->first();
+
+        if (!$projectEnvironment) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Project environment configuration not found for rollback.',
+            ], 400);
+        }
+
         // Create a new rollback deployment record
         $deployment = Deployment::create([
             'project_id' => $project->id,
+            'environment_id' => $targetDeployment->environment_id,
             'user_id' => Auth::id(),
             'status' => 'pending',
             'started_at' => now(),
@@ -550,8 +603,10 @@ class DeploymentController extends Controller
             $logger->info('Rollback deployment attempt started', [
                 'project_id' => $project->id,
                 'project_name' => $project->name,
-                'deploy_endpoint' => $project->deploy_endpoint,
-                'rollback_endpoint' => $project->rollback_endpoint,
+                'environment_id' => $projectEnvironment->environment_id,
+                'environment_name' => $projectEnvironment->environment->name,
+                'deploy_endpoint' => $projectEnvironment->deploy_endpoint,
+                'rollback_endpoint' => $projectEnvironment->rollback_endpoint,
                 'user_id' => Auth::id(),
                 'user_name' => Auth::user()->name,
                 'deployment_id' => $deployment->id,
@@ -560,7 +615,7 @@ class DeploymentController extends Controller
             ]);
 
             // Determine which endpoint to use for rollback
-            $endpoint = $project->rollback_endpoint;
+            $endpoint = $projectEnvironment->rollback_endpoint;
 
             // Require a dedicated rollback endpoint to avoid accidental deploys
             if (empty($endpoint)) {

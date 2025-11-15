@@ -1,0 +1,30 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        // Use raw SQL to modify columns without doctrine/dbal
+        DB::statement('ALTER TABLE projects MODIFY COLUMN deploy_endpoint VARCHAR(255) NULL');
+        DB::statement('ALTER TABLE projects MODIFY COLUMN rollback_endpoint VARCHAR(255) NULL');
+        DB::statement('ALTER TABLE projects MODIFY COLUMN application_url VARCHAR(255) NULL');
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        DB::statement('ALTER TABLE projects MODIFY COLUMN deploy_endpoint VARCHAR(255) NOT NULL');
+        DB::statement('ALTER TABLE projects MODIFY COLUMN rollback_endpoint VARCHAR(255) NOT NULL');
+        DB::statement('ALTER TABLE projects MODIFY COLUMN application_url VARCHAR(255) NOT NULL');
+    }
+};

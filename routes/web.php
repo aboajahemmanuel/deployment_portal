@@ -55,6 +55,18 @@ Route::middleware('auth')->group(function () {
             Route::post('/deployment-files/update', [\App\Http\Controllers\Admin\DeploymentFileController::class, 'update'])->name('deployment-files.update');
             Route::delete('/deployment-files', [\App\Http\Controllers\Admin\DeploymentFileController::class, 'destroy'])->name('deployment-files.destroy');
             
+            // Environment Management
+            Route::prefix('environments')->name('environments.')->group(function () {
+                Route::get('/', [\App\Http\Controllers\Admin\EnvironmentController::class, 'index'])->name('index');
+                Route::get('/create', [\App\Http\Controllers\Admin\EnvironmentController::class, 'create'])->name('create');
+                Route::post('/', [\App\Http\Controllers\Admin\EnvironmentController::class, 'store'])->name('store');
+                Route::get('/{environment}', [\App\Http\Controllers\Admin\EnvironmentController::class, 'show'])->name('show');
+                Route::get('/{environment}/edit', [\App\Http\Controllers\Admin\EnvironmentController::class, 'edit'])->name('edit');
+                Route::put('/{environment}', [\App\Http\Controllers\Admin\EnvironmentController::class, 'update'])->name('update');
+                Route::delete('/{environment}', [\App\Http\Controllers\Admin\EnvironmentController::class, 'destroy'])->name('destroy');
+                Route::patch('/{environment}/toggle-active', [\App\Http\Controllers\Admin\EnvironmentController::class, 'toggleActive'])->name('toggle-active');
+            });
+            
             // Deployment Management
             Route::get('/deployments', [DeploymentAdminController::class, 'deployments'])->name('deployments');
             

@@ -142,6 +142,15 @@
                     </li><!-- .nk-menu-item -->
                     @endcan
                     
+                    @can('viewAny', App\Models\Environment::class)
+                    <li class="nk-menu-item {{ request()->routeIs('admin.environments.*') ? 'active' : '' }}">
+                        <a href="{{ route('admin.environments.index') }}" class="nk-menu-link">
+                            <span class="nk-menu-icon"><em class="icon ni ni-server-fill"></em></span>
+                            <span class="nk-menu-text">Environment Management</span>
+                        </a>
+                    </li><!-- .nk-menu-item -->
+                    @endcan
+                    
                     <li class="nk-menu-heading">
                         <h6 class="overline-title text-primary-alt">Account</h6>
                     </li><!-- .nk-menu-heading -->

@@ -18,8 +18,6 @@ class Project extends Model
     protected $fillable = [
         'name',
         'repository_url',
-        'deploy_endpoint',
-        'rollback_endpoint',
         'access_token',
         'current_branch',
         'description',
@@ -27,7 +25,6 @@ class Project extends Model
         'user_id',
         'project_type',
         'env_variables',
-        'application_url',
     ];
 
     /**
@@ -85,5 +82,31 @@ class Project extends Model
     public function securityPolicy()
     {
         return $this->hasOne(SecurityPolicy::class)->where('is_active', true);
+    }
+
+    /**
+     * Get the project environments for this project.
+     */
+    public function projectEnvironments()
+    {
+        return $this->hasMany(ProjectEnvironment::class);
+    }
+
+    /**
+     * Get the environments for this project.
+     */
+    public function environments()
+    {
+        return $this->belongsToMany(Environment::class, 'project_environments')
+            ->withPivot(['deploy_endpoint', 'rollback_endpoint', 'application_url', 'project_path', 'env_variables', 'branch', 'is_active'])
+            ->withTimestamps();
+    }
+
+    /**
+     * Get active project environments.
+     */
+    public function activeEnvironments()
+    {
+        return $this->projectEnvironments()->where('is_active', true);
     }
 }

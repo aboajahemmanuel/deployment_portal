@@ -77,12 +77,22 @@
                                 </div>
                                 <div class="col-sm-6">
                                     <div class="form-group">
-                                        <label class="form-label">Application URL</label>
+                                        <label class="form-label">Application URLs by Environment</label>
                                         <div class="form-control-wrap">
-                                            @if(!empty($project->application_url))
-                                                <div class="form-text"><a href="{{ $project->application_url }}" target="_blank" rel="noopener">{{ $project->application_url }}</a></div>
+                                            @if($project->projectEnvironments->count() > 0)
+                                                @foreach($project->projectEnvironments as $projectEnv)
+                                                    <div class="mb-2">
+                                                        <span class="badge bg-{{ $projectEnv->environment->slug == 'production' ? 'success' : ($projectEnv->environment->slug == 'staging' ? 'warning' : 'info') }} me-2">
+                                                            {{ $projectEnv->environment->name }}
+                                                        </span>
+                                                        <a href="{{ $projectEnv->application_url }}" target="_blank" rel="noopener" class="text-primary">
+                                                            {{ $projectEnv->application_url }}
+                                                            <em class="icon ni ni-external"></em>
+                                                        </a>
+                                                    </div>
+                                                @endforeach
                                             @else
-                                                <div class="form-text text-muted">Not set</div>
+                                                <div class="form-text text-muted">No environments configured</div>
                                             @endif
                                         </div>
                                     </div>
@@ -127,14 +137,22 @@
                                 @can('deploy', $project)
                                     @if($project->is_active)
                                         <button 
-                                            onclick="deployProject({{ $project->id }})"
+                                            type="button"
                                             class="btn btn-primary btn-lg"
+                                            data-bs-toggle="modal" 
+                                            data-bs-target="#environmentModaldeploy"
                                             id="deployButton">
+                                            <span class="spinner-border spinner-border-sm d-none" id="deploySpinner" role="status" aria-hidden="true"></span>
                                             <em class="icon ni ni-send"></em>
-                                            <span>Deploy Now</span>
+                                            <span id="deployText">Deploy Now</span>
                                         </button>
-                                        @if(!empty($project->application_url))
-                                        <a href="{{ $project->application_url }}" target="_blank" rel="noopener" class="btn btn-success btn-lg ms-2">
+                                        @if($project->projectEnvironments->where('environment.slug', 'production')->first())
+                                        <a href="{{ $project->projectEnvironments->where('environment.slug', 'production')->first()->application_url }}" target="_blank" rel="noopener" class="btn btn-success btn-lg ms-2">
+                                            <em class="icon ni ni-external"></em>
+                                            <span>Open Production App</span>
+                                        </a>
+                                        @elseif($project->projectEnvironments->first())
+                                        <a href="{{ $project->projectEnvironments->first()->application_url }}" target="_blank" rel="noopener" class="btn btn-success btn-lg ms-2">
                                             <em class="icon ni ni-external"></em>
                                             <span>Open App</span>
                                         </a>
@@ -568,4 +586,8 @@ function viewLogs(deploymentId) {
     showInfoMessage('Viewing logs for deployment ' + deploymentId);
 }
 </script>
+
+<!-- Include Environment Selector Component -->
+<x-environment-selector :project="$project" action="deploy" />
+
 @endsection

@@ -60,23 +60,9 @@
                     </div>
                     
                     <div class="col-12">
-                        <div class="form-group">
-                            <label class="form-label" for="deploy_endpoint">Deploy Endpoint</label>
-                            <div class="form-control-wrap">
-                                <input type="url" class="form-control" id="deploy_endpoint" name="deploy_endpoint" value="{{ old('deploy_endpoint', $project->deploy_endpoint) }}" required>
-                                <div class="form-text">The URL to the deploy.php script on the remote server</div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    
-                    <div class="col-12">
-                        <div class="form-group">
-                            <label class="form-label" for="rollback_endpoint">Rollback Endpoint (Optional)</label>
-                            <div class="form-control-wrap">
-                                <input type="url" class="form-control" id="rollback_endpoint" name="rollback_endpoint" value="{{ old('rollback_endpoint', $project->rollback_endpoint) }}">
-                                <div class="form-text">The URL to the rollback.php script on the remote server (if different from deploy endpoint)</div>
-                            </div>
+                        <div class="alert alert-info">
+                            <h6 class="alert-heading"><em class="icon ni ni-info"></em> Multi-Environment Project</h6>
+                            <p class="mb-0">This project is configured for multiple environments. Environment-specific settings (deploy endpoints, paths, URLs) are managed through the Environment Management system.</p>
                         </div>
                     </div>
                     
