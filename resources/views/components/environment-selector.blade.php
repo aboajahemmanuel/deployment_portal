@@ -93,7 +93,7 @@ function triggerDeployment(environmentId, environmentName) {
         deployText.textContent = 'Deploying...';
     }
     
-    fetch(`/deployments/${projectId}/deploy`, {
+    fetch(`{{ url('/deployments') }}/${projectId}/deploy`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

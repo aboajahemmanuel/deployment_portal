@@ -29,7 +29,7 @@ class DeploymentController extends Controller
         // Filter projects based on user role
         if ($user->roles->contains('name', 'admin')) {
             // Admins see all projects
-            $projects = Project::with('latestDeployment')->get();
+            $projects = Project::with('latestDeployment.environment')->get();
             $upcomingScheduledDeployments = ScheduledDeployment::with(['project', 'user'])
                 ->where('status', 'pending')
                 ->where('scheduled_at', '>', now())
@@ -39,7 +39,7 @@ class DeploymentController extends Controller
         } elseif ($user->roles->contains('name', 'developer')) {
             // Developers only see their assigned projects
             $projects = Project::where('user_id', $user->id)
-                ->with('latestDeployment')
+                ->with('latestDeployment.environment')
                 ->get();
             $upcomingScheduledDeployments = ScheduledDeployment::where('user_id', $user->id)
                 ->with(['project', 'user'])
@@ -127,14 +127,14 @@ class DeploymentController extends Controller
                     $envFileName = $endpointSlug . '_' . $environment->slug . '.php';
                     $envRollbackFileName = $endpointSlug . '_' . $environment->slug . '_rollback.php';
                     
-                    // Generate environment-specific project path based on project type
+                    // Generate environment-specific project path using server_base_path
                     $projectType = $project->project_type ?? 'laravel';
                     if ($projectType === 'laravel') {
                         // Laravel projects use separate _deploy directory
                         $windowsProjectPath = $environment->server_base_path . '\\' . $slug . '_deploy';
                     } else {
-                        // Non-Laravel projects deploy directly to web directory
-                        $windowsProjectPath = 'C:\\xampp\\htdocs\\' . $slug;
+                        // Non-Laravel projects deploy directly to server base path
+                        $windowsProjectPath = $environment->server_base_path . '\\' . $slug;
                     }
                     
                     // Generate environment-specific URLs
@@ -147,7 +147,8 @@ class DeploymentController extends Controller
                         $windowsProjectPath, 
                         $project->repository_url,
                         $project->project_type ?? 'laravel',
-                        $project->env_variables
+                        $project->env_variables,
+                        $environment->server_base_path
                     );
                     
                     // Generate rollback script content
@@ -211,7 +212,7 @@ class DeploymentController extends Controller
     {
         $this->authorize('view', $project);
         
-        $deployments = $project->deployments()->latest()->paginate(10);
+        $deployments = $project->deployments()->with('environment')->latest()->paginate(10);
         
         return view('deployments.show', compact('project', 'deployments'));
     }
@@ -340,8 +341,24 @@ class DeploymentController extends Controller
             // Log the parameters being sent
             $logger->info('Sending deployment request with parameters', $params);
 
+            // Validate deploy endpoint before logging HTTP request
+            $deployEndpoint = $projectEnvironment->deploy_endpoint ?? '';
+            if (!is_string($deployEndpoint) || trim($deployEndpoint) === '') {
+                $errorMessage = 'Deploy endpoint is missing or invalid for project environment';
+                $logger->error($errorMessage, [
+                    'project_id' => $project->id,
+                    'environment_id' => $projectEnvironment->environment_id,
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => $errorMessage,
+                ], 400);
+            }
+            $deployEndpoint = trim($deployEndpoint);
+
             // Log the HTTP request details
-            $logger->logHttpRequest($projectEnvironment->deploy_endpoint, 'GET', [], $params);
+            $logger->logHttpRequest($deployEndpoint, 'GET', [], $params);
 
             // Ensure this controller action can run long enough for the remote deployment to complete
             // Avoid hitting PHP's default 60s max execution time when waiting on the remote server
@@ -630,6 +647,22 @@ class DeploymentController extends Controller
                 ], 400);
             }
 
+            // Validate rollback endpoint is a string
+            if (!is_string($endpoint)) {
+                $logger->error('Invalid rollback endpoint for project', [
+                    'project_id' => $project->id,
+                    'project_name' => $project->name,
+                    'endpoint_type' => gettype($endpoint),
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cannot rollback: Invalid rollback endpoint configured for this project. Endpoint must be a string.',
+                ], 400);
+            }
+            
+            $endpoint = trim($endpoint);
+
             // Check if target deployment has a commit hash
             if (empty($targetDeployment->commit_hash)) {
                 $logger->error('Rollback target deployment has no commit hash', [
@@ -834,8 +867,8 @@ class DeploymentController extends Controller
         $failedDeployments = Deployment::where('status', 'failed')->count();
         $pendingDeployments = Deployment::where('status', 'pending')->count();
         
-        // Get recent deployments
-        $recentDeployments = Deployment::with(['project', 'user'])->latest()->paginate(20);
+        // Get recent deployments with environment information
+        $recentDeployments = Deployment::with(['project', 'user', 'environment'])->latest()->paginate(20);
         
         return view('deployments.monitoring', compact(
             'totalDeployments',
@@ -853,8 +886,8 @@ class DeploymentController extends Controller
     {
         $this->authorize('viewAny', Deployment::class);
         
-        // Get recent deployments for the dropdown
-        $recentDeployments = Deployment::with(['project', 'user'])->latest()->limit(50)->get();
+        // Get recent deployments for the dropdown with environment information
+        $recentDeployments = Deployment::with(['project', 'user', 'environment'])->latest()->limit(50)->get();
         
         return view('deployments.realtime-monitoring', compact('recentDeployments'));
     }
@@ -869,7 +902,7 @@ class DeploymentController extends Controller
         $logs = $deployment->logs()->orderBy('created_at', 'desc')->limit(100)->get();
         
         return response()->json([
-            'deployment' => $deployment->load(['project', 'user']),
+            'deployment' => $deployment->load(['project', 'user', 'environment']),
             'logs' => $logs,
         ]);
     }

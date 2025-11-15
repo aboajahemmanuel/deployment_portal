@@ -73,6 +73,57 @@ class ProcessScheduledDeployment implements ShouldQueue
             ]);
             return;
         }
+
+        // Get the project environment configuration
+        $projectEnvironment = \App\Models\ProjectEnvironment::where('project_id', $project->id)
+            ->where('environment_id', $scheduledDeployment->environment_id)
+            ->where('is_active', true)
+            ->first();
+
+        if (!$projectEnvironment) {
+            Log::error("Project environment configuration not found for scheduled deployment #{$scheduledDeployment->id}", [
+                'project_id' => $project->id,
+                'environment_id' => $scheduledDeployment->environment_id
+            ]);
+            $scheduledDeployment->update([
+                'status' => 'failed',
+                'last_run_at' => now(),
+                'queue_job_id' => null
+            ]);
+            return;
+        }
+        
+        // Validate deploy endpoint for this environment
+        $deployEndpoint = $projectEnvironment->deploy_endpoint ?? '';
+        if (!is_string($deployEndpoint) || trim($deployEndpoint) === '') {
+            Log::error("Deploy endpoint is missing or invalid for project environment", [
+                'scheduled_deployment_id' => $scheduledDeployment->id,
+                'project_id' => $project->id,
+                'environment_id' => $scheduledDeployment->environment_id,
+            ]);
+            $scheduledDeployment->update([
+                'status' => 'failed',
+                'last_run_at' => now(),
+                'queue_job_id' => null
+            ]);
+            return;
+        }
+        $deployEndpoint = trim($deployEndpoint);
+        
+        // Double-check that the endpoint is still valid after trimming
+        if ($deployEndpoint === '') {
+            Log::error("Deploy endpoint is empty after trimming whitespace", [
+                'scheduled_deployment_id' => $scheduledDeployment->id,
+                'project_id' => $project->id,
+                'environment_id' => $scheduledDeployment->environment_id,
+            ]);
+            $scheduledDeployment->update([
+                'status' => 'failed',
+                'last_run_at' => now(),
+                'queue_job_id' => null
+            ]);
+            return;
+        }
         
         try {
             // Prepare deployment data
@@ -80,6 +131,7 @@ class ProcessScheduledDeployment implements ShouldQueue
                 'project_id' => $project->id,
                 'branch' => $project->current_branch ?? 'main',
                 'user_id' => $scheduledDeployment->user_id,
+                'environment_id' => $scheduledDeployment->environment_id,
                 'is_scheduled' => true,
                 'scheduled_deployment_id' => $scheduledDeployment->id
             ];
@@ -87,6 +139,7 @@ class ProcessScheduledDeployment implements ShouldQueue
             // Create a deployment record up front so we can attach structured logs
             $deployment = Deployment::create([
                 'project_id' => $project->id,
+                'environment_id' => $scheduledDeployment->environment_id,
                 'user_id' => $scheduledDeployment->user_id,
                 'commit_hash' => 'scheduled-' . now()->format('YmdHis'),
                 'status' => 'processing',
@@ -100,7 +153,8 @@ class ProcessScheduledDeployment implements ShouldQueue
             $logger = new \App\Services\DeploymentLogger($deployment);
             $logger->info('Scheduled deployment attempt started', [
                 'project_name' => $project->name ?? null,
-                'deploy_endpoint' => $project->deploy_endpoint,
+                'deploy_endpoint' => $deployEndpoint,
+                'environment_name' => $projectEnvironment->environment->name,
                 'scheduled_deployment_id' => $scheduledDeployment->id,
             ]);
             
@@ -109,13 +163,29 @@ class ProcessScheduledDeployment implements ShouldQueue
             Log::info('Scheduled deployment: sending request to deploy endpoint', [
                 'scheduled_deployment_id' => $scheduledDeployment->id,
                 'project_id' => $project->id,
-                'endpoint' => $project->deploy_endpoint,
+                'endpoint' => $deployEndpoint,
                 'branch' => $deploymentData['branch'],
                 'auth' => $maskedToken ? ('Bearer ' . $maskedToken) : null,
             ]);
 
+            // Defensive check to ensure deployEndpoint is still valid
+            if (!is_string($deployEndpoint) || $deployEndpoint === '') {
+                Log::error("Deploy endpoint became invalid just before HTTP request", [
+                    'scheduled_deployment_id' => $scheduledDeployment->id,
+                    'project_id' => $project->id,
+                    'endpoint_value' => $deployEndpoint,
+                    'endpoint_type' => gettype($deployEndpoint),
+                ]);
+                $scheduledDeployment->update([
+                    'status' => 'failed',
+                    'last_run_at' => now(),
+                    'queue_job_id' => null
+                ]);
+                return;
+            }
+
             // Log the outgoing HTTP request to deployment logs as well
-            $logger->logHttpRequest($project->deploy_endpoint, 'POST', [
+            $logger->logHttpRequest($deployEndpoint, 'POST', [
                 'Authorization' => $maskedToken ? ('Bearer ' . $maskedToken) : null,
                 'Content-Type' => 'application/json',
             ], $deploymentData);
@@ -128,7 +198,7 @@ class ProcessScheduledDeployment implements ShouldQueue
                 ->withHeaders([
                     'Authorization' => 'Bearer ' . ($project->access_token ?? ''),
                 ])
-                ->post($project->deploy_endpoint, $deploymentData);
+                ->post($deployEndpoint, $deploymentData);
             
             $responseBody = (string) $response->body();
             $looksSuccessful = is_string($responseBody)

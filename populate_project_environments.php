@@ -53,14 +53,14 @@ foreach ($projects as $project) {
             $envFileName = $slug . '_' . $environment->slug . '.php';
             $envRollbackFileName = $slug . '_' . $environment->slug . '_rollback.php';
             
-            // Generate environment-specific project path based on project type
+            // Generate environment-specific project path using server_base_path
             $projectType = $project->project_type ?? 'laravel';
             if ($projectType === 'laravel') {
                 // Laravel projects use separate _deploy directory
                 $windowsProjectPath = $environment->server_base_path . '\\' . $slug . '_deploy';
             } else {
-                // Non-Laravel projects deploy directly to web directory
-                $windowsProjectPath = 'C:\\xampp\\htdocs\\' . $slug;
+                // Non-Laravel projects deploy directly to server base path
+                $windowsProjectPath = $environment->server_base_path . '\\' . $slug;
             }
             
             // Generate environment-specific URLs
@@ -73,7 +73,8 @@ foreach ($projects as $project) {
                 $windowsProjectPath, 
                 $project->repository_url,
                 $project->project_type ?? 'laravel',
-                $project->env_variables
+                $project->env_variables,
+                $environment->server_base_path
             );
             
             // Generate rollback script content

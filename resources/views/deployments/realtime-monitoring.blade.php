@@ -34,6 +34,9 @@
                                 @foreach($recentDeployments as $deployment)
                                     <option value="{{ $deployment->id }}">
                                         #{{ $deployment->id }} - {{ $deployment->project->name }} 
+                                        @if($deployment->environment)
+                                            ({{ $deployment->environment->name }})
+                                        @endif
                                         ({{ $deployment->started_at?->format('M d, Y H:i') ?? 'N/A' }})
                                     </option>
                                 @endforeach
@@ -136,14 +139,13 @@ function stopMonitoring() {
     
     // Reset UI
     document.getElementById('monitoringPanel').classList.add('d-none');
-    document.getElementById('startMonitoringBtn').classList.remove('d-none');
     document.getElementById('stopMonitoringBtn').classList.add('d-none');
     document.getElementById('deploymentSelect').value = '';
     document.getElementById('startMonitoringBtn').disabled = true;
 }
 
 function fetchLogs(deploymentId) {
-    fetch(`/deployments/deployments/${deploymentId}/realtime-logs`)
+    fetch(`{{ url('/pipelines/deployments') }}/${deploymentId}/realtime-logs`)
         .then(response => response.json())
         .then(data => {
             // Update deployment info

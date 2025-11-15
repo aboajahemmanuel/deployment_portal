@@ -48,6 +48,22 @@
                     
                     <div class="col-md-6">
                         <div class="form-group">
+                            <label class="form-label" for="environment_id">Environment</label>
+                            <div class="form-control-wrap">
+                                <select class="form-control" id="environment_id" name="environment_id" required>
+                                    <option value="">Select an environment</option>
+                                    @foreach(\App\Models\Environment::active()->ordered()->get() as $environment)
+                                        <option value="{{ $environment->id }}" {{ old('environment_id') == $environment->id ? 'selected' : '' }}>
+                                            {{ $environment->name }} ({{ $environment->description }})
+                                        </option>
+                                    @endforeach
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="form-group">
                             <label class="form-label" for="scheduled_at">Scheduled Time</label>
                             <div class="form-control-wrap">
                                 <input type="datetime-local" class="form-control" id="scheduled_at" name="scheduled_at" value="{{ old('scheduled_at') }}" required>

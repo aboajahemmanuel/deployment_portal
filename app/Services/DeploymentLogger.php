@@ -79,12 +79,19 @@ class DeploymentLogger
     /**
      * Log HTTP request details
      */
-    public function logHttpRequest(string $url, string $method, array $headers = [], array $params = []): DeploymentLog
+    public function logHttpRequest($url, string $method, array $headers = [], array $params = []): DeploymentLog
     {
-        $message = "HTTP Request: {$method} {$url}";
+        // Handle null or empty URL gracefully
+        $safeUrl = is_string($url) ? $url : '(invalid URL)';
+        if ($safeUrl === '') {
+            $safeUrl = '(empty URL)';
+        }
+        
+        $message = "HTTP Request: {$method} {$safeUrl}";
         $context = [
             'http_method' => $method,
             'url' => $url,
+            'url_type' => gettype($url),
             'headers' => $headers,
             'params' => $params,
         ];

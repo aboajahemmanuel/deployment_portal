@@ -20,13 +20,13 @@ class ScheduledDeploymentController extends Controller
         // Filter scheduled deployments based on user role
         if ($user->roles->contains('name', 'admin')) {
             // Admins see all scheduled deployments
-            $scheduledDeployments = ScheduledDeployment::with(['project', 'user'])
+            $scheduledDeployments = ScheduledDeployment::with(['project', 'user', 'environment'])
                 ->orderBy('scheduled_at', 'asc')
                 ->paginate(20);
         } elseif ($user->roles->contains('name', 'developer')) {
             // Developers only see their own scheduled deployments
             $scheduledDeployments = ScheduledDeployment::where('user_id', $user->id)
-                ->with(['project', 'user'])
+                ->with(['project', 'user', 'environment'])
                 ->orderBy('scheduled_at', 'asc')
                 ->paginate(20);
         } else {
@@ -68,6 +68,7 @@ class ScheduledDeploymentController extends Controller
         
         $validated = $request->validate([
             'project_id' => 'required|exists:projects,id',
+            'environment_id' => 'required|exists:environments,id',
             'scheduled_at' => 'required|date|after:now',
             'description' => 'nullable|string|max:500',
             'is_recurring' => 'boolean',
@@ -83,6 +84,7 @@ class ScheduledDeploymentController extends Controller
 
         $scheduledDeployment = ScheduledDeployment::create([
             'project_id' => $validated['project_id'],
+            'environment_id' => $validated['environment_id'],
             'user_id' => Auth::id(),
             'scheduled_at' => $scheduledAt,
             'description' => $validated['description'] ?? null,
@@ -151,6 +153,7 @@ class ScheduledDeploymentController extends Controller
 
         $scheduledDeployment->update([
             'project_id' => $validated['project_id'],
+            'environment_id' => $validated['environment_id'],
             'scheduled_at' => $scheduledAt,
             'description' => $validated['description'] ?? null,
             'is_recurring' => $validated['is_recurring'] ?? false,

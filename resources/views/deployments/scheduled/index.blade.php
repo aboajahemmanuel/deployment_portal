@@ -34,6 +34,7 @@
                         <thead>
                             <tr>
                                 <th>Project</th>
+                                <th>Environment</th>
                                 <th>Scheduled Time</th>
                                 <th>Status</th>
                                 <th>Created By</th>
@@ -44,6 +45,13 @@
                             @foreach($scheduledDeployments as $scheduled)
                                 <tr>
                                     <td>{{ $scheduled->project->name }}</td>
+                                    <td>
+                                        @if($scheduled->environment)
+                                            <span class="badge bg-secondary">{{ $scheduled->environment->name }}</span>
+                                        @else
+                                            <span class="text-muted">Unknown</span>
+                                        @endif
+                                    </td>
                                     <td>{{ $scheduled->scheduled_at->setTimezone('Africa/Lagos')->format('M d, Y H:i') }}</td>
                                     <td>
                                         <span class="badge bg-{{ 

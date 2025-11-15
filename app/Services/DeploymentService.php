@@ -294,14 +294,30 @@ class DeploymentService implements DeploymentServiceInterface
      */
     private function makeDeploymentRequest(Project $project, array $params, DeploymentLogger $logger): array
     {
-        $logger->logHttpRequest($project->deploy_endpoint, 'GET', [], $params);
+        // Validate deploy endpoint before logging HTTP request
+        $deployEndpoint = $project->deploy_endpoint ?? '';
+        if (!is_string($deployEndpoint) || trim($deployEndpoint) === '') {
+            $errorMessage = 'Deploy endpoint is missing or invalid for project';
+            $logger->error($errorMessage, [
+                'project_id' => $project->id,
+            ]);
+            
+            return [
+                'success' => false,
+                'output' => $errorMessage,
+                'commit_hash' => null,
+            ];
+        }
+        $deployEndpoint = trim($deployEndpoint);
+        
+        $logger->logHttpRequest($deployEndpoint, 'GET', [], $params);
 
         $response = Http::withToken($project->access_token)
             ->withOptions(['verify' => false])
             ->connectTimeout(30)   // connect timeout
             ->timeout(600)         // extend total timeout for first-time deployments
             ->retry(3, 2000)       // 3 retries, 2s apart
-            ->get($project->deploy_endpoint, $params);
+            ->get($deployEndpoint, $params);
 
         $responseBody = (string) $response->body();
         $logger->logHttpResponse($response->status(), $responseBody, $response->headers());
@@ -355,13 +371,29 @@ class DeploymentService implements DeploymentServiceInterface
      */
     private function makeRollbackRequest(Project $project, array $params, DeploymentLogger $logger): array
     {
-        $logger->logHttpRequest($project->rollback_endpoint, 'POST', ['Content-Type' => 'application/json'], $params);
+        // Validate rollback endpoint before logging HTTP request
+        $rollbackEndpoint = $project->rollback_endpoint ?? '';
+        if (!is_string($rollbackEndpoint) || trim($rollbackEndpoint) === '') {
+            $errorMessage = 'Rollback endpoint is missing or invalid for project';
+            $logger->error($errorMessage, [
+                'project_id' => $project->id,
+            ]);
+            
+            return [
+                'success' => false,
+                'output' => $errorMessage,
+                'commit_hash' => null,
+            ];
+        }
+        $rollbackEndpoint = trim($rollbackEndpoint);
+        
+        $logger->logHttpRequest($rollbackEndpoint, 'POST', ['Content-Type' => 'application/json'], $params);
 
         $response = Http::timeout(300)
             ->withOptions(['verify' => false])
             ->withHeaders(['Authorization' => 'Bearer test-token-123'])
             ->asJson()
-            ->post($project->rollback_endpoint, $params);
+            ->post($rollbackEndpoint, $params);
 
         $logger->logHttpResponse($response->status(), $response->body(), $response->headers());
 

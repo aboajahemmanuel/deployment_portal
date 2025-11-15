@@ -123,6 +123,7 @@
                             <tr>
                                 <th>Project</th>
                                 <th>User</th>
+                                <th>Environment</th>
                                 <th>Status</th>
                                 <th>Started</th>
                                 <th>Completed</th>
@@ -138,6 +139,13 @@
                                         </a>
                                     </td>
                                     <td>{{ $deployment->user->name }}</td>
+                                    <td>
+                                        @if($deployment->environment)
+                                            <span class="badge bg-secondary">{{ $deployment->environment->name }}</span>
+                                        @else
+                                            <span class="text-muted">Unknown</span>
+                                        @endif
+                                    </td>
                                     <td>
                                         <span class="badge bg-{{ $deployment->status === 'success' ? 'success' : 
                                             ($deployment->status === 'failed' ? 'danger' : 'warning') }}">

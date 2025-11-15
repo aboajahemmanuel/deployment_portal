@@ -7,11 +7,12 @@ class DeploymentFileGenerator
     /**
      * Generate the deployment PHP script content.
      */
-    public function make(string $projectPath, ?string $repoUrl = null, ?string $projectType = 'laravel', ?string $envVariables = null): string
+    public function make(string $projectPath, ?string $repoUrl = null, ?string $projectType = 'laravel', ?string $envVariables = null, ?string $serverBasePath = null): string
     {
         $escapedPath = addslashes($projectPath);
         $escapedRepo = addslashes($repoUrl ?? '');
         $escapedEnv = addslashes($envVariables ?? '');
+        $escapedServerBasePath = addslashes($serverBasePath ?? '');
 
         $php = <<<'PHP'
 <?php
@@ -19,6 +20,7 @@ class DeploymentFileGenerator
 $projectPath = '__PROJECT_PATH__';
 $repoUrl = '__REPO_URL__';
 $envVariables = '__ENV_VARS__';
+$serverBasePath = '__SERVER_BASE_PATH__';
 $runId = date('Ymd_His');
 $logDir = __DIR__ . '/logs';
 if (!is_dir($logDir)) { @mkdir($logDir, 0777, true); }
@@ -37,11 +39,56 @@ $safeDir = str_replace('\\', '/', $projectPath);
 @ini_set('default_socket_timeout', '300');
 putenv('COMPOSER_PROCESS_TIMEOUT=2000');
 
-// Add Git and Node to PATH for this script
+// Use server base path from environment or auto-detect
+$serverType = 'unknown';
+$htdocsPath = $serverBasePath;
+$phpPath = '';
+
+if (empty($serverBasePath)) {
+    // Fallback to auto-detection if no server base path provided
+    if (is_dir('C:\\xampp\\htdocs')) {
+        $serverType = 'xampp';
+        $htdocsPath = 'C:\\xampp\\htdocs';
+        $phpPath = 'C:\\xampp\\php';
+    }
+    elseif (is_dir('C:\\wamp64\\www')) {
+        $serverType = 'wamp64';
+        $htdocsPath = 'C:\\wamp64\\www';
+        $phpPath = 'C:\\wamp64\\bin\\php\\php' . phpversion();
+    }
+    elseif (is_dir('C:\\wamp\\www')) {
+        $serverType = 'wamp';
+        $htdocsPath = 'C:\\wamp\\www';
+        $phpPath = 'C:\\wamp\\bin\\php\\php' . phpversion();
+    }
+    else {
+        $htdocsPath = $_SERVER['DOCUMENT_ROOT'] ?? 'C:\\inetpub\\wwwroot';
+        $phpPath = dirname(PHP_BINARY);
+    }
+} else {
+    // Determine server type from server base path
+    if (strpos($htdocsPath, 'xampp') !== false) {
+        $serverType = 'xampp';
+        $phpPath = 'C:\\xampp\\php';
+    } elseif (strpos($htdocsPath, 'wamp64') !== false) {
+        $serverType = 'wamp64';
+        $phpPath = 'C:\\wamp64\\bin\\php\\php' . phpversion();
+    } elseif (strpos($htdocsPath, 'wamp') !== false) {
+        $serverType = 'wamp';
+        $phpPath = 'C:\\wamp\\bin\\php\\php' . phpversion();
+    } else {
+        $phpPath = dirname(PHP_BINARY);
+    }
+}
+
+logLine("🔍 Server type: {$serverType}", $output, $logFile, $aggregateLog);
+logLine("📁 Server base path: {$htdocsPath}", $output, $logFile, $aggregateLog);
+logLine("🐘 PHP path: {$phpPath}", $output, $logFile, $aggregateLog);
+
+// Add Git, PHP, and Node to PATH for this script
 $gitPath = 'C:\\Program Files\\Git\\cmd';
-$composerPath = 'C:\\xampp\\php'; // Adjust if needed
 $nodePath = 'C:\\Program Files\\nodejs';
-putenv("PATH=" . getenv("PATH") . ";{$gitPath};{$composerPath};{$nodePath}");
+putenv("PATH=" . getenv("PATH") . ";{$gitPath};{$phpPath};{$nodePath}");
 
 $output = "";
 $hadError = false;
@@ -235,11 +282,9 @@ if ('__PROJECT_TYPE__' === 'laravel') {
 }
 
 if ($appSlug) {
-    $htdocs = 'C:\\xampp\\htdocs';
-    
     if ('__PROJECT_TYPE__' === 'laravel') {
         // Laravel projects: Create separate web directory with index.php stub
-        $webDir = $htdocs . '\\' . $appSlug;
+        $webDir = $htdocsPath . '\\' . $appSlug;
         if (!is_dir($webDir)) { @mkdir($webDir, 0777, true); }
 
         // index.php stub to forward into the deployed app's public/index.php
@@ -304,11 +349,13 @@ PHP;
             '__REPO_URL__',
             '__ENV_VARS__',
             '__PROJECT_TYPE__',
+            '__SERVER_BASE_PATH__',
         ], [
             $escapedPath,
             $escapedRepo,
             $escapedEnv,
             $projectType,
+            $escapedServerBasePath,
         ], $php);
         return $php;
     }

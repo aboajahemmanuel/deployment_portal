@@ -516,7 +516,7 @@ function triggerManualScan() {
         btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Scanning...';
         btn.disabled = true;
         
-        fetch(`/security/deployment/${deploymentId}/scan`, {
+        fetch(`{{ url('/security/deployment') }}/${deploymentId}/scan`, {
             method: 'POST',
             headers: {
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),

@@ -205,6 +205,7 @@
                             <tr>
                                 <th>Date</th>
                                 <th>User</th>
+                                <th>Environment</th>
                                 <th>Status</th>
                                 <th>Type</th>
                                 <th>Actions</th>
@@ -215,6 +216,13 @@
                                 <tr>
                                     <td>{{ $deployment->created_at->format('M d, Y H:i') }}</td>
                                     <td>{{ $deployment->user->name }}</td>
+                                    <td>
+                                        @if($deployment->environment)
+                                            <span class="badge bg-secondary">{{ $deployment->environment->name }}</span>
+                                        @else
+                                            <span class="badge bg-light text-dark">Unknown</span>
+                                        @endif
+                                    </td>
                                     <td>
                                         <span class="badge bg-{{ $deployment->status === 'success' ? 'success' : 
                                             ($deployment->status === 'failed' ? 'danger' : 'warning') }}">
@@ -269,7 +277,8 @@
                     @can('deploy', $project)
                         @if($project->is_active)
                             <button 
-                                onclick="deployProject({{ $project->id }})"
+                                data-bs-toggle="modal" 
+                                data-bs-target="#environmentModaldeploy"
                                 class="btn btn-primary">
                                 <em class="icon ni ni-send"></em>
                                 <span>Deploy Now</span>
@@ -334,7 +343,7 @@ function deployProject(projectId) {
         // Show full page loader only after user confirms
         showPageDeploymentLoader();
         
-        fetch(`/deployments/${projectId}/deploy`, {
+        fetch(`{{ url('/deployments') }}/${projectId}/deploy`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -476,7 +485,7 @@ function confirmRollback() {
         // Show full page loader only after user confirms
         showPageDeploymentLoader();
         
-        fetch(`/deployments/${projectId}/rollback/${selectedDeploymentId}`, {
+        fetch(`{{ url('/deployments') }}/${projectId}/rollback/${selectedDeploymentId}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

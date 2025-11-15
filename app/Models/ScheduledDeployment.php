@@ -17,6 +17,7 @@ class ScheduledDeployment extends Model
      */
     protected $fillable = [
         'project_id',
+        'environment_id',
         'user_id',
         'scheduled_at',
         'status',
@@ -54,6 +55,14 @@ class ScheduledDeployment extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Get the environment for the scheduled deployment.
+     */
+    public function environment()
+    {
+        return $this->belongsTo(Environment::class);
     }
 
     /**

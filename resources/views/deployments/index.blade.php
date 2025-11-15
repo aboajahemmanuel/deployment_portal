@@ -133,6 +133,14 @@ Never
 @endif
 </div>
 <div class="small text-muted mt-1">
+<strong>Environment:</strong>
+@if($project->latestDeployment && $project->latestDeployment->environment)
+<span class="badge bg-secondary">{{ $project->latestDeployment->environment->name }}</span>
+@else
+<span class="text-muted">None</span>
+@endif
+</div>
+<div class="small text-muted mt-1">
 <strong>Status:</strong>
 @if($project->latestDeployment)
 <span class="badge bg-{{ $project->latestDeployment->status === 'success' ? 'success' :
