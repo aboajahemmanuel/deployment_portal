@@ -1,4 +1,4 @@
-@extends('layouts.deployment-admin')
+@extends('layouts.deployment')
 
 @section('title', 'User Management | Deployment Manager')
 

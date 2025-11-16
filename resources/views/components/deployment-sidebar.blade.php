@@ -84,13 +84,13 @@
                         </a>
                     </li>
 
-                    <li class="nk-menu-item {{ request()->routeIs('admin.deployment-files.*') ? 'active' : '' }}">
+                    {{-- <li class="nk-menu-item {{ request()->routeIs('admin.deployment-files.*') ? 'active' : '' }}">
                         <a href="{{ route('admin.deployment-files.index') }}" class="nk-menu-link">
                             <span class="nk-menu-icon"><em class="icon ni ni-file-code"></em></span>
                             <span class="nk-menu-text">Deployment File Generator</span>
                         </a>
                     </li>
-                    
+                     --}}
                     {{-- @can('viewAny', App\Models\Project::class)
                     <li class="nk-menu-item {{ request()->routeIs('pipelines.*') ? 'active' : '' }}">
                         <a href="#" class="nk-menu-link nk-menu-toggle">
@@ -133,23 +133,23 @@
                     </li><!-- .nk-menu-item -->
                     @endcan
                     
-                    @can('viewAny', App\Models\User::class)
+                   
                     <li class="nk-menu-item {{ request()->routeIs('admin.users.*') ? 'active' : '' }}">
                         <a href="{{ route('admin.users.index') }}" class="nk-menu-link">
                             <span class="nk-menu-icon"><em class="icon ni ni-users-fill"></em></span>
                             <span class="nk-menu-text">User Management</span>
                         </a>
                     </li><!-- .nk-menu-item -->
-                    @endcan
                     
-                    @can('viewAny', App\Models\Environment::class)
+                    
+                   
                     <li class="nk-menu-item {{ request()->routeIs('admin.environments.*') ? 'active' : '' }}">
                         <a href="{{ route('admin.environments.index') }}" class="nk-menu-link">
                             <span class="nk-menu-icon"><em class="icon ni ni-server-fill"></em></span>
                             <span class="nk-menu-text">Environment Management</span>
                         </a>
                     </li><!-- .nk-menu-item -->
-                    @endcan
+                  
                     
                     <li class="nk-menu-heading">
                         <h6 class="overline-title text-primary-alt">Account</h6>

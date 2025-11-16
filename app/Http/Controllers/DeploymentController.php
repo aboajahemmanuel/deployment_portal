@@ -169,23 +169,59 @@ class DeploymentController extends Controller
                     
                     // Check if files were written successfully
                     if ($deployResult === false) {
+                        // Get detailed error information
+                        $errorDetails = [];
+                        $lastError = error_get_last();
+                        if ($lastError) {
+                            $errorDetails['message'] = $lastError['message'] ?? 'No message';
+                            $errorDetails['type'] = $lastError['type'] ?? 'Unknown type';
+                            $errorDetails['file'] = $lastError['file'] ?? 'Unknown file';
+                            $errorDetails['line'] = $lastError['line'] ?? 'Unknown line';
+                        } else {
+                            $errorDetails['message'] = 'No error details available';
+                        }
+                        
+                        // Check if path exists and is writable
+                        $directory = dirname($targetPath);
+                        $errorDetails['directory_exists'] = is_dir($directory) ? 'yes' : 'no';
+                        $errorDetails['directory_writable'] = is_writable($directory) ? 'yes' : 'no';
+                        $errorDetails['path_resolved'] = realpath($directory) ?: 'Could not resolve path';
+                        
                         Log::error('Failed to write deployment file', [
                             'project_id' => $project->id,
                             'environment' => $environment->name,
                             'target_path' => $targetPath,
-                            'error' => error_get_last()['message'] ?? 'Unknown error'
+                            'error_details' => $errorDetails
                         ]);
-                        throw new \Exception("Failed to write deployment file to {$targetPath}");
+                        throw new \Exception("Failed to write deployment file to {$targetPath}: " . $errorDetails['message']);
                     }
                     
                     if ($rollbackResult === false) {
+                        // Get detailed error information
+                        $errorDetails = [];
+                        $lastError = error_get_last();
+                        if ($lastError) {
+                            $errorDetails['message'] = $lastError['message'] ?? 'No message';
+                            $errorDetails['type'] = $lastError['type'] ?? 'Unknown type';
+                            $errorDetails['file'] = $lastError['file'] ?? 'Unknown file';
+                            $errorDetails['line'] = $lastError['line'] ?? 'Unknown line';
+                        } else {
+                            $errorDetails['message'] = 'No error details available';
+                        }
+                        
+                        // Check if path exists and is writable
+                        $directory = dirname($rollbackTargetPath);
+                        $errorDetails['directory_exists'] = is_dir($directory) ? 'yes' : 'no';
+                        $errorDetails['directory_writable'] = is_writable($directory) ? 'yes' : 'no';
+                        $errorDetails['path_resolved'] = realpath($directory) ?: 'Could not resolve path';
+                        
                         Log::error('Failed to write rollback file', [
                             'project_id' => $project->id,
                             'environment' => $environment->name,
                             'target_path' => $rollbackTargetPath,
-                            'error' => error_get_last()['message'] ?? 'Unknown error'
+                            'error_details' => $errorDetails
                         ]);
-                        throw new \Exception("Failed to write rollback file to {$rollbackTargetPath}");
+                        throw new \Exception("Failed to write rollback file to {$rollbackTargetPath}: " . $errorDetails['message']);
                     }
                     
                     // Create project environment record
@@ -1063,6 +1099,7 @@ class DeploymentController extends Controller
         }
     }
 
+    
     /**
      * Send deployment notification to relevant users.
      */
