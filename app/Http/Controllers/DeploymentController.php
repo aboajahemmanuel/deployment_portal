@@ -164,8 +164,29 @@ class DeploymentController extends Controller
                     $rollbackTargetPath = $targetBase . $envRollbackFileName;
 
                     // Write deployment files
-                    @file_put_contents($targetPath, $content);
-                    @file_put_contents($rollbackTargetPath, $rollbackContent);
+                    $deployResult = @file_put_contents($targetPath, $content);
+                    $rollbackResult = @file_put_contents($rollbackTargetPath, $rollbackContent);
+                    
+                    // Check if files were written successfully
+                    if ($deployResult === false) {
+                        Log::error('Failed to write deployment file', [
+                            'project_id' => $project->id,
+                            'environment' => $environment->name,
+                            'target_path' => $targetPath,
+                            'error' => error_get_last()['message'] ?? 'Unknown error'
+                        ]);
+                        throw new \Exception("Failed to write deployment file to {$targetPath}");
+                    }
+                    
+                    if ($rollbackResult === false) {
+                        Log::error('Failed to write rollback file', [
+                            'project_id' => $project->id,
+                            'environment' => $environment->name,
+                            'target_path' => $rollbackTargetPath,
+                            'error' => error_get_last()['message'] ?? 'Unknown error'
+                        ]);
+                        throw new \Exception("Failed to write rollback file to {$rollbackTargetPath}");
+                    }
                     
                     // Create project environment record
                     \App\Models\ProjectEnvironment::create([
@@ -214,7 +235,10 @@ class DeploymentController extends Controller
         
         $deployments = $project->deployments()->with('environment')->latest()->paginate(10);
         
-        return view('deployments.show', compact('project', 'deployments'));
+        // Get all environments for the project
+        $environments = $project->environments()->where('environments.is_active', true)->orderBy('environments.order')->orderBy('environments.name')->get();
+        
+        return view('deployments.show', compact('project', 'deployments', 'environments'));
     }
 
     /**
@@ -586,6 +610,17 @@ class DeploymentController extends Controller
 
         // Get rollback reason from request
         $rollbackReason = $request->input('reason', 'Rollback initiated by user');
+        
+        // Get environment_id from request (optional, for validation)
+        $requestedEnvironmentId = $request->input('environment_id');
+
+        // Validate that the requested environment matches the target deployment's environment
+        if ($requestedEnvironmentId && $requestedEnvironmentId != $targetDeployment->environment_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Environment mismatch. Rollbacks can only be performed within the same environment.',
+            ], 400);
+        }
 
         // Get the project environment configuration for the target deployment's environment
         $projectEnvironment = \App\Models\ProjectEnvironment::where('project_id', $project->id)
@@ -849,6 +884,7 @@ class DeploymentController extends Controller
     {
         $this->authorize('view', $project);
         
+        $deployment->load('environment');
         $logs = $deployment->logs()->orderBy('created_at', 'desc')->paginate(50);
         
         return view('deployments.logs', compact('project', 'deployment', 'logs'));

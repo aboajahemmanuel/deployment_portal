@@ -381,15 +381,68 @@ PHP;
 // Increase limits for long operations
 @set_time_limit(0);
 @ini_set('max_execution_time', '0');
+@ini_set('default_socket_timeout', '300');
+putenv('COMPOSER_PROCESS_TIMEOUT=2000');
 
 $projectPath = '__PROJECT_PATH__';
 $logDir = __DIR__ . '/logs';
 if (!is_dir($logDir)) { @mkdir($logDir, 0777, true); }
 $logFile = $logDir . '/rollback_' . date('Ymd_His') . '.log';
+$aggregateLog = __DIR__ . '/deploy-log.txt';
+$safeDir = str_replace('\\', '/', $projectPath);
 
-function logLine($msg, $logFile) {
+// Auto-detect server type and paths based on project location
+$serverType = 'unknown';
+$htdocsPath = '';
+$phpPath = '';
+
+// Determine server type based on project path
+if (stripos($projectPath, 'xampp') !== false) {
+    $serverType = 'xampp';
+    $htdocsPath = 'C:\\xampp\\htdocs';
+    $phpPath = 'C:\\xampp\\php';
+} elseif (stripos($projectPath, 'wamp64') !== false) {
+    $serverType = 'wamp64';
+    $htdocsPath = 'C:\\wamp64\\www';
+    $phpPath = 'C:\\wamp64\\bin\\php\\php' . phpversion();
+} elseif (stripos($projectPath, 'wamp') !== false) {
+    $serverType = 'wamp';
+    $htdocsPath = 'C:\\wamp\\www';
+    $phpPath = 'C:\\wamp\\bin\\php\\php' . phpversion();
+} else {
+    // Fallback to checking common server setups
+    if (is_dir('C:\\xampp\\htdocs')) {
+        $serverType = 'xampp';
+        $htdocsPath = 'C:\\xampp\\htdocs';
+        $phpPath = 'C:\\xampp\\php';
+    }
+    elseif (is_dir('C:\\wamp64\\www')) {
+        $serverType = 'wamp64';
+        $htdocsPath = 'C:\\wamp64\\www';
+        $phpPath = 'C:\\wamp64\\bin\\php\\php' . phpversion();
+    }
+    elseif (is_dir('C:\\wamp\\www')) {
+        $serverType = 'wamp';
+        $htdocsPath = 'C:\\wamp\\www';
+        $phpPath = 'C:\\wamp\\bin\\php\\php' . phpversion();
+    }
+    else {
+        $htdocsPath = $_SERVER['DOCUMENT_ROOT'] ?? 'C:\\inetpub\\wwwroot';
+        $phpPath = dirname(PHP_BINARY);
+    }
+}
+
+// Add Git, PHP, and Node to PATH for this script
+$gitPath = 'C:\\Program Files\\Git\\cmd';
+$nodePath = 'C:\\Program Files\\nodejs';
+putenv("PATH=" . getenv("PATH") . ";{$gitPath};{$phpPath};{$nodePath}");
+
+function logLine($msg, $logFile, $aggregateLog = null) {
     $line = '[' . date('Y-m-d H:i:s') . "] $msg\n";
     @file_put_contents($logFile, $line, FILE_APPEND);
+    if ($aggregateLog) {
+        @file_put_contents($aggregateLog, $line, FILE_APPEND);
+    }
 }
 
 // Read input (JSON preferred)
@@ -401,16 +454,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_SERVER['CONTENT_TYPE']) &&
     $input = $_POST + $_GET;
 }
 
-
 // Basic validation
 $isRollback = isset($input['rollback']) && ($input['rollback'] === true || $input['rollback'] === 'true' || $input['rollback'] === 1 || $input['rollback'] === '1');
 $targetCommit = $input['rollback_target_commit'] ?? null;
 $reason = $input['rollback_reason'] ?? 'Rollback initiated';
+$projectType = $input['project_type'] ?? 'laravel';
 
 if (!$isRollback) {
     @http_response_code(400);
     $resp = ['status' => 'error', 'message' => 'This endpoint is for rollback operations only'];
-    logLine('❌ Not a rollback request', $logFile);
+    logLine('❌ Not a rollback request', $logFile, $aggregateLog);
     echo json_encode($resp);
     exit;
 }
@@ -418,52 +471,73 @@ if (!$isRollback) {
 if (!$targetCommit) {
     @http_response_code(400);
     $resp = ['status' => 'error', 'message' => 'Missing rollback_target_commit'];
-    logLine('❌ Missing rollback_target_commit', $logFile);
+    logLine('❌ Missing rollback_target_commit', $logFile, $aggregateLog);
     echo json_encode($resp);
     exit;
 }
 
-// Ensure tools are in PATH (Git/Composer)
-putenv('PATH=' . getenv('PATH') . ';C:\\Program Files\\Git\\cmd;C:\\xampp\\php');
-
-logLine('🔄 Rollback started in ' . $projectPath, $logFile);
-logLine('Target commit: ' . $targetCommit, $logFile);
-logLine('Reason: ' . $reason, $logFile);
+logLine("🔍 Server type: {$serverType}", $logFile, $aggregateLog);
+logLine("📁 Server base path: {$htdocsPath}", $logFile, $aggregateLog);
+logLine("🐘 PHP path: {$phpPath}", $logFile, $aggregateLog);
+logLine('🔄 Rollback started in ' . $projectPath, $logFile, $aggregateLog);
+logLine('Target commit: ' . $targetCommit, $logFile, $aggregateLog);
+logLine('Project type: ' . $projectType, $logFile, $aggregateLog);
+logLine('Reason: ' . $reason, $logFile, $aggregateLog);
 
 // Execute helper
-function run($cmd, $logFile) {
-    logLine('> ' . $cmd, $logFile);
+function run($cmd, $logFile, $aggregateLog = null) {
+    logLine('> ' . $cmd, $logFile, $aggregateLog);
     exec($cmd . ' 2>&1', $out, $code);
-    foreach ($out as $line) { logLine($line, $logFile); }
-    if ($code !== 0) { logLine('❌ Command failed: ' . $code, $logFile); }
+    foreach ($out as $line) { logLine($line, $logFile, $aggregateLog); }
+    if ($code !== 0) { logLine('❌ Command failed: ' . $code, $logFile, $aggregateLog); }
     return $code === 0;
 }
 
-$safeDir = str_replace('\\', '/', $projectPath);
 $ok = true;
 
 // Make sure directory exists
 if (!is_dir($projectPath)) {
     @http_response_code(500);
     $resp = ['status' => 'error', 'message' => 'Project path not found: ' . $projectPath];
-    logLine('❌ Project path not found', $logFile);
+    logLine('❌ Project path not found', $logFile, $aggregateLog);
     echo json_encode($resp);
     exit;
 }
 
-$ok = $ok && run("git config --global --add safe.directory {$safeDir}", $logFile);
-$ok = $ok && run("cd /d {$projectPath} && git fetch --all --tags", $logFile);
-$ok = $ok && run("cd /d {$projectPath} && git checkout {$targetCommit}", $logFile);
-$ok = $ok && run("cd /d {$projectPath} && composer install --no-interaction --prefer-dist --optimize-autoloader --no-progress", $logFile);
-$ok = $ok && run("cd /d {$projectPath} && php artisan optimize:clear", $logFile);
-$ok = $ok && run("cd /d {$projectPath} && php artisan config:cache", $logFile);
-$ok = $ok && run("cd /d {$projectPath} && php artisan route:cache", $logFile);
-$ok = $ok && run("cd /d {$projectPath} && php artisan config:clear", $logFile);
+$ok = $ok && run("git config --global --add safe.directory {$safeDir}", $logFile, $aggregateLog);
+$ok = $ok && run("cd /d {$projectPath} && git fetch --all --tags", $logFile, $aggregateLog);
+$ok = $ok && run("cd /d {$projectPath} && git checkout {$targetCommit}", $logFile, $aggregateLog);
 
+// Install dependencies based on project type and existence of dependency files
+if (($projectType === 'laravel' || $projectType === 'php') && file_exists($projectPath . '/composer.json')) {
+    $ok = $ok && run("cd /d {$projectPath} && composer install --no-interaction --prefer-dist --optimize-autoloader --no-progress", $logFile, $aggregateLog);
+} elseif ($projectType === 'nodejs' && file_exists($projectPath . '/package.json')) {
+    if (file_exists($projectPath . '/package-lock.json')) {
+        $ok = $ok && run("cd /d {$projectPath} && npm ci --no-audit --no-fund --silent", $logFile, $aggregateLog);
+    } else {
+        $ok = $ok && run("cd /d {$projectPath} && npm install --no-audit --no-fund --silent", $logFile, $aggregateLog);
+    }
+}
 
-// Optional: database rollback step can be risky in prod; keep but log
-$dbRolled = run("cd /d {$projectPath} && php artisan migrate:rollback --force", $logFile);
-if (!$dbRolled) { logLine('⚠️ Database rollback may have failed or no migrations to rollback', $logFile); }
+// Run project-type specific commands
+if ($projectType === 'laravel' && file_exists($projectPath . '/artisan')) {
+    $ok = $ok && run("cd /d {$projectPath} && php artisan optimize:clear", $logFile, $aggregateLog);
+    $ok = $ok && run("cd /d {$projectPath} && php artisan config:cache", $logFile, $aggregateLog);
+    $ok = $ok && run("cd /d {$projectPath} && php artisan route:cache", $logFile, $aggregateLog);
+    $ok = $ok && run("cd /d {$projectPath} && php artisan config:clear", $logFile, $aggregateLog);
+    
+    // Optional: database rollback step can be risky in prod; keep but log
+    $dbRolled = run("cd /d {$projectPath} && php artisan migrate:rollback --force", $logFile, $aggregateLog);
+    if (!$dbRolled) { logLine('⚠️ Database rollback may have failed or no migrations to rollback', $logFile, $aggregateLog); }
+} elseif ($projectType === 'nodejs') {
+    // For Node.js projects, rebuild if there's a build script
+    if (file_exists($projectPath . '/package.json')) {
+        $packageJson = json_decode(file_get_contents($projectPath . '/package.json'), true);
+        if (isset($packageJson['scripts']['build'])) {
+            $ok = $ok && run("cd /d {$projectPath} && npm run build --if-present", $logFile, $aggregateLog);
+        }
+    }
+}
 
 // Get current commit
 $currentCommit = '';
@@ -479,8 +553,9 @@ if ($ok) {
         'is_rollback' => true,
         'rollback_target_commit' => $targetCommit,
         'commit_hash' => $currentCommit,
+        'project_type' => $projectType,
     ];
-    logLine('✅ Rollback finished successfully', $logFile);
+    logLine('✅ Rollback finished successfully', $logFile, $aggregateLog);
     echo json_encode($resp);
 } else {
     @http_response_code(500);
@@ -491,8 +566,9 @@ if ($ok) {
         'is_rollback' => true,
         'rollback_target_commit' => $targetCommit,
         'commit_hash' => $currentCommit,
+        'project_type' => $projectType,
     ];
-    logLine('❌ Rollback finished with errors', $logFile);
+    logLine('❌ Rollback finished with errors', $logFile, $aggregateLog);
     echo json_encode($resp);
 }
 PHP;

@@ -44,6 +44,11 @@
                 <div class="col-md-6">
                     <p><strong>User:</strong> {{ $deployment->user->name }}</p>
                     <p><strong>Branch:</strong> {{ $project->current_branch }}</p>
+                    @if($deployment->environment)
+                        <p><strong>Environment:</strong> 
+                            <span class="badge bg-secondary">{{ $deployment->environment->name }}</span>
+                        </p>
+                    @endif
                     @if($deployment->is_rollback)
                         <p><strong>Type:</strong> <span class="badge bg-info">Rollback</span></p>
                         @if($deployment->rollbackTarget)

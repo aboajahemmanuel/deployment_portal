@@ -248,7 +248,7 @@
                                             
                                             @if($deployment->status === 'success' && !$deployment->is_rollback && $deployment->commit_hash)
                                                 @can('deploy', $project)
-                                                    <button onclick="rollbackDeployment({{ $project->id }}, {{ $deployment->id }})" class="btn btn-sm btn-outline-warning" title="Rollback to commit {{ substr($deployment->commit_hash, 0, 7) }}">
+                                                    <button onclick="rollbackDeployment({{ $project->id }}, {{ $deployment->id }})" class="btn btn-sm btn-outline-warning" title="Rollback to commit {{ substr($deployment->commit_hash, 0, 7) }} in {{ $deployment->environment->name ?? 'Unknown' }} environment">
                                                         <em class="icon ni ni-redo"></em>
                                                         <span>Rollback to {{ substr($deployment->commit_hash, 0, 7) }}</span>
                                                     </button>
@@ -296,7 +296,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Rollback Deployment</h5>
+                <h5 class="modal-title">Rollback Deployment (<span id="modalEnvironmentName">Environment</span>)</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
@@ -311,13 +311,28 @@
                             <option value="">Choose a commit...</option>
                             @foreach($deployments as $deployment)
                                 @if($deployment->status === 'success' && !$deployment->is_rollback && $deployment->commit_hash)
-                                    <option value="{{ $deployment->id }}" data-commit="{{ $deployment->commit_hash }}">
+                                    <option value="{{ $deployment->id }}" 
+                                            data-commit="{{ $deployment->commit_hash }}"
+                                            data-environment="{{ $deployment->environment->name ?? 'Unknown' }}"
+                                            data-environment-id="{{ $deployment->environment_id }}">
                                         {{ substr($deployment->commit_hash, 0, 7) }} - {{ $deployment->created_at->format('M d, Y H:i') }} by {{ $deployment->user->name }}
+                                        @if($deployment->environment)
+                                            ({{ $deployment->environment->name }})
+                                        @endif
                                     </option>
                                 @endif
                             @endforeach
                         </select>
-                        <small class="form-text text-muted">Select a previous successful deployment to rollback to</small>
+                        <div class="form-text">
+                            <small class="text-muted">Only deployments from the same environment as the target deployment are shown.</small>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Target Environment</label>
+                        <div class="alert alert-info">
+                            <strong>Environment:</strong> <span id="rollbackEnvironment">None selected</span>
+                        </div>
                     </div>
                     
                     <div class="mb-3">
@@ -468,6 +483,8 @@ function confirmRollback() {
     const commitSelect = document.getElementById('rollbackCommitSelect');
     const selectedDeploymentId = commitSelect.value;
     const selectedCommit = commitSelect.options[commitSelect.selectedIndex].getAttribute('data-commit');
+    const selectedEnvironment = commitSelect.options[commitSelect.selectedIndex].getAttribute('data-environment');
+    const selectedEnvironmentId = commitSelect.options[commitSelect.selectedIndex].getAttribute('data-environment-id');
     
     if (!selectedDeploymentId) {
         showErrorMessage('Please select a commit to rollback to.');
@@ -481,7 +498,7 @@ function confirmRollback() {
     bootstrap.Modal.getInstance(document.getElementById('rollbackModal')).hide();
     
     const commitShort = selectedCommit ? selectedCommit.substring(0, 7) : selectedDeploymentId;
-    confirmAction(`Are you sure you want to rollback to commit ${commitShort}? This will revert the application to the state it was in at the time of this deployment.`, function() {
+    confirmAction(`Are you sure you want to rollback to commit ${commitShort} in the ${selectedEnvironment} environment? This will revert the application to the state it was in at the time of this deployment within the same environment.`, function() {
         // Show full page loader only after user confirms
         showPageDeploymentLoader();
         
@@ -492,7 +509,8 @@ function confirmRollback() {
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
             },
             body: JSON.stringify({
-                reason: reason
+                reason: reason,
+                environment_id: selectedEnvironmentId
             })
         })
         .then(response => response.json())
@@ -508,6 +526,7 @@ function confirmRollback() {
                     html: `
                         <div class="text-start">
                             <p class="mb-2"><strong>Project:</strong> {{ $project->name }}</p>
+                            <p class="mb-2"><strong>Environment:</strong> ${selectedEnvironment}</p>
                             <p class="mb-2"><strong>Status:</strong> <span class="badge bg-success">Rollback Completed</span></p>
                             <p class="mb-2"><strong>Target Commit:</strong> ${commitShort}</p>
                             <p class="mb-0"><strong>Time:</strong> ${new Date().toLocaleString()}</p>
@@ -538,6 +557,7 @@ function confirmRollback() {
                     html: `
                         <div class="text-start">
                             <p class="mb-2"><strong>Project:</strong> {{ $project->name }}</p>
+                            <p class="mb-2"><strong>Environment:</strong> ${selectedEnvironment}</p>
                             <p class="mb-2"><strong>Status:</strong> <span class="badge bg-danger">Rollback Failed</span></p>
                             <p class="mb-2"><strong>Target Commit:</strong> ${commitShort}</p>
                             <p class="mb-2"><strong>Error:</strong> ${data.message}</p>
@@ -581,14 +601,42 @@ function rollbackDeployment(projectId, targetDeploymentId) {
     document.getElementById('rollbackTargetDeploymentId').value = targetDeploymentId;
     document.getElementById('rollbackReason').value = '';
     
-    // Pre-select the clicked deployment in the dropdown if provided
-    if (targetDeploymentId) {
-        const commitSelect = document.getElementById('rollbackCommitSelect');
-        commitSelect.value = targetDeploymentId;
+    // Get the target deployment's environment
+    const targetOption = document.querySelector(`#rollbackCommitSelect option[value="${targetDeploymentId}"]`);
+    if (targetOption) {
+        const targetEnvironmentId = targetOption.getAttribute('data-environment-id');
+        const targetEnvironmentName = targetOption.getAttribute('data-environment');
+        
+        // Update environment display
+        document.getElementById('rollbackEnvironment').textContent = targetEnvironmentName;
+        document.getElementById('modalEnvironmentName').textContent = targetEnvironmentName;
+        
+        // Filter the options to show only deployments from the same environment
+        const allOptions = document.querySelectorAll('#rollbackCommitSelect option');
+        allOptions.forEach(option => {
+            if (option.value === '') {
+                // Always show the placeholder option
+                option.style.display = '';
+            } else {
+                const optionEnvironmentId = option.getAttribute('data-environment-id');
+                // Show only options from the same environment
+                option.style.display = (optionEnvironmentId === targetEnvironmentId) ? '' : 'none';
+            }
+        });
+        
+        // Pre-select the target deployment
+        document.getElementById('rollbackCommitSelect').value = targetDeploymentId;
     }
     
     new bootstrap.Modal(document.getElementById('rollbackModal')).show();
 }
+
+// Update environment display when deployment selection changes
+document.getElementById('rollbackCommitSelect').addEventListener('change', function() {
+    const selectedOption = this.options[this.selectedIndex];
+    const environmentName = selectedOption.getAttribute('data-environment') || 'Unknown';
+    document.getElementById('rollbackEnvironment').textContent = environmentName;
+});
 
 function viewLogs(deploymentId) {
     // This would typically open a modal with the logs
