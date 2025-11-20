@@ -8,7 +8,7 @@ $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
 use App\Models\Project;
 
-$projectId = 10;
+$projectId = 2;
 $project = Project::find($projectId);
 
 if ($project) {
@@ -20,6 +20,7 @@ if ($project) {
     echo "Name: {$project->name}\n";
     echo "Generated slug: {$slug}\n";
     echo "Repository URL: {$project->repository_url}\n";
+    echo "Environment Variables: {$project->env_variables}\n";
 } else {
     echo "Project with ID {$projectId} not found.\n";
 }

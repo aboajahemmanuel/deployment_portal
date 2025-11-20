@@ -40,11 +40,8 @@ foreach ($environments as $environment) {
     
     // Generate environment-specific project path
     $projectType = $project->project_type ?? 'laravel';
-    if ($projectType === 'laravel') {
-        $windowsProjectPath = $environment->server_base_path . '\\' . $slug . '_deploy';
-    } else {
-        $windowsProjectPath = $environment->server_base_path . '\\' . $slug;
-    }
+    // Remove _deploy suffix for all project types
+    $windowsProjectPath = $environment->server_base_path . '\\' . $slug;
     echo "   Windows project path: {$windowsProjectPath}\n";
     
     // Generate URLs

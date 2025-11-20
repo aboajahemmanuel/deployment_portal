@@ -49,13 +49,8 @@ foreach ($environments as $environment) {
     
     // Generate environment-specific project path using server_base_path
     $projectType = $project->project_type ?? 'laravel';
-    if ($projectType === 'laravel') {
-        // Laravel projects use separate _deploy directory
-        $windowsProjectPath = $environment->server_base_path . '\\' . $slug . '_deploy';
-    } else {
-        // Non-Laravel projects deploy directly to server base path
-        $windowsProjectPath = $environment->server_base_path . '\\' . $slug;
-    }
+    // Remove _deploy suffix for all project types
+    $windowsProjectPath = $environment->server_base_path . '\\' . $slug;
     
     // Generate environment-specific URLs
     $deployEndpoint = rtrim($environment->deploy_endpoint_base, '/') . '/' . $envFileName;

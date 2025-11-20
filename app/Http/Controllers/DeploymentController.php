@@ -129,13 +129,8 @@ class DeploymentController extends Controller
                     
                     // Generate environment-specific project path using server_base_path
                     $projectType = $project->project_type ?? 'laravel';
-                    if ($projectType === 'laravel') {
-                        // Laravel projects use separate _deploy directory
-                        $windowsProjectPath = $environment->server_base_path . '\\' . $slug . '_deploy';
-                    } else {
-                        // Non-Laravel projects deploy directly to server base path
-                        $windowsProjectPath = $environment->server_base_path . '\\' . $slug;
-                    }
+                    // Remove _deploy suffix for all project types
+                    $windowsProjectPath = $environment->server_base_path . '\\' . $slug;
                     
                     // Generate environment-specific URLs
                     $deployEndpoint = rtrim($environment->deploy_endpoint_base, '/') . '/' . $envFileName;
@@ -163,9 +158,53 @@ class DeploymentController extends Controller
                     $targetPath = $targetBase . $envFileName;
                     $rollbackTargetPath = $targetBase . $envRollbackFileName;
 
-                    // Write deployment files
-                    $deployResult = @file_put_contents($targetPath, $content);
-                    $rollbackResult = @file_put_contents($rollbackTargetPath, $rollbackContent);
+                    // Increase time limit for file operations
+                    set_time_limit(300); // Increase to 5 minutes for file operations
+                    
+                    // Write deployment files with retry logic and timeout handling
+                    $deployResult = $this->writeFileWithRetry($targetPath, $content, 3, 120); // 3 retries, 2 minute timeout each
+                    $rollbackResult = $this->writeFileWithRetry($rollbackTargetPath, $rollbackContent, 3, 120); // 3 retries, 2 minute timeout each
+                    
+                    // If file writing failed, try alternative approach
+                    if ($deployResult === false || $rollbackResult === false) {
+                        Log::warning('Direct file writing failed, trying alternative approach', [
+                            'project_id' => $project->id,
+                            'environment' => $environment->name,
+                            'deploy_target' => $deployResult === false ? $targetPath : 'SUCCESS',
+                            'rollback_target' => $rollbackResult === false ? $rollbackTargetPath : 'SUCCESS'
+                        ]);
+                        
+                        // Try creating a local temporary file and then copying it
+                        $tempDir = sys_get_temp_dir();
+                        $tempDeployFile = $tempDir . DIRECTORY_SEPARATOR . 'deploy_' . uniqid() . '.php';
+                        $tempRollbackFile = $tempDir . DIRECTORY_SEPARATOR . 'rollback_' . uniqid() . '.php';
+                        
+                        // Write to temporary files first
+                        $tempDeployResult = @file_put_contents($tempDeployFile, $content);
+                        $tempRollbackResult = @file_put_contents($tempRollbackFile, $rollbackContent);
+                        
+                        if ($tempDeployResult !== false && $tempRollbackResult !== false) {
+                            // Copy files to network locations
+                            $deployResult = $this->copyFileWithRetry($tempDeployFile, $targetPath, 3, 120);
+                            $rollbackResult = $this->copyFileWithRetry($tempRollbackFile, $rollbackTargetPath, 3, 120);
+                            
+                            // Clean up temporary files
+                            @unlink($tempDeployFile);
+                            @unlink($tempRollbackFile);
+                            
+                            if ($deployResult !== false && $rollbackResult !== false) {
+                                Log::info('Successfully wrote deployment files using alternative approach', [
+                                    'project_id' => $project->id,
+                                    'environment' => $environment->name,
+                                    'deploy_target' => $targetPath,
+                                    'rollback_target' => $rollbackTargetPath
+                                ]);
+                            }
+                        }
+                    }
+                    
+                    // Reset time limit
+                    set_time_limit(60);
                     
                     // Check if files were written successfully
                     if ($deployResult === false) {
@@ -1099,6 +1138,391 @@ class DeploymentController extends Controller
         }
     }
 
+    /**
+     * Write content to a file with retry logic and timeout.
+     *
+     * @param string $filename
+     * @param string $content
+     * @param int $maxRetries
+     * @param int $timeoutSeconds
+     * @return bool|int
+     */
+    private function writeFileWithRetry(string $filename, string $content, int $maxRetries = 3, int $timeoutSeconds = 60)
+    {
+        $attempt = 0;
+        
+        while ($attempt < $maxRetries) {
+            $attempt++;
+            
+            try {
+                // Log the attempt
+                if ($attempt > 1) {
+                    Log::info('Retrying file write operation', [
+                        'filename' => $filename,
+                        'attempt' => $attempt,
+                        'max_retries' => $maxRetries
+                    ]);
+                    
+                    // Wait a bit before retrying
+                    sleep(2);
+                }
+                
+                // Try to write the file with timeout
+                $result = $this->writeFileWithTimeout($filename, $content, $timeoutSeconds);
+                
+                if ($result !== false) {
+                    // Success
+                    if ($attempt > 1) {
+                        Log::info('File write operation succeeded on retry', [
+                            'filename' => $filename,
+                            'attempt' => $attempt
+                        ]);
+                    }
+                    return $result;
+                }
+                
+                // Log failure
+                $lastError = error_get_last();
+                Log::warning('File write attempt failed', [
+                    'filename' => $filename,
+                    'attempt' => $attempt,
+                    'error' => $lastError ? $lastError['message'] : 'Unknown error'
+                ]);
+                
+            } catch (\Exception $e) {
+                Log::error('Exception during file write attempt', [
+                    'filename' => $filename,
+                    'attempt' => $attempt,
+                    'error' => $e->getMessage()
+                ]);
+            } catch (\Error $e) {
+                Log::error('Error during file write attempt', [
+                    'filename' => $filename,
+                    'attempt' => $attempt,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+        
+        // All retries failed
+        Log::error('File write operation failed after all retries', [
+            'filename' => $filename,
+            'attempts' => $maxRetries
+        ]);
+        
+        return false;
+    }
+    
+    /**
+     * Write content to a file with a timeout.
+     *
+     * @param string $filename
+     * @param string $content
+     * @param int $timeoutSeconds
+     * @return bool|int
+     */
+    private function writeFileWithTimeout(string $filename, string $content, int $timeoutSeconds = 60)
+    {
+        // Store the current time
+        $startTime = time();
+        
+        // Try to write the file
+        try {
+            // For network file operations, we need to handle them differently
+            // to avoid PHP script timeouts
+            if (strpos($filename, '\\\\') === 0) {
+                // This is a UNC path, use a more robust approach
+                return $this->writeNetworkFile($filename, $content, $timeoutSeconds);
+            }
+            
+            // Use file_put_contents with error suppression for local files
+            $result = @file_put_contents($filename, $content);
+            
+            // Check if we've exceeded the timeout
+            $elapsedTime = time() - $startTime;
+            if ($elapsedTime > $timeoutSeconds) {
+                Log::warning('File write operation timed out', [
+                    'filename' => $filename,
+                    'timeout_seconds' => $timeoutSeconds,
+                    'elapsed_time' => $elapsedTime
+                ]);
+                return false;
+            }
+            
+            return $result;
+        } catch (\Exception $e) {
+            Log::error('Exception during file write operation', [
+                'filename' => $filename,
+                'error' => $e->getMessage(),
+                'elapsed_time' => time() - $startTime
+            ]);
+            return false;
+        } catch (\Error $e) {
+            Log::error('Error during file write operation', [
+                'filename' => $filename,
+                'error' => $e->getMessage(),
+                'elapsed_time' => time() - $startTime
+            ]);
+            return false;
+        }
+    }
+    
+    /**
+     * Write content to a network file (UNC path) with better error handling.
+     *
+     * @param string $filename
+     * @param string $content
+     * @param int $timeoutSeconds
+     * @return bool|int
+     */
+    private function writeNetworkFile(string $filename, string $content, int $timeoutSeconds = 60)
+    {
+        // Check if the directory exists and is writable first
+        $directory = dirname($filename);
+        if (!is_dir($directory)) {
+            Log::error('Network directory does not exist', [
+                'directory' => $directory,
+                'filename' => $filename
+            ]);
+            return false;
+        }
+        
+        if (!is_writable($directory)) {
+            Log::error('Network directory is not writable', [
+                'directory' => $directory,
+                'filename' => $filename
+            ]);
+            return false;
+        }
+        
+        // Try to write the file with a more controlled approach
+        $handle = @fopen($filename, 'w');
+        if ($handle === false) {
+            $lastError = error_get_last();
+            Log::error('Failed to open network file for writing', [
+                'filename' => $filename,
+                'error' => $lastError ? $lastError['message'] : 'Unknown error'
+            ]);
+            return false;
+        }
+        
+        // Write content
+        $bytesWritten = @fwrite($handle, $content);
+        if ($bytesWritten === false) {
+            $lastError = error_get_last();
+            Log::error('Failed to write to network file', [
+                'filename' => $filename,
+                'error' => $lastError ? $lastError['message'] : 'Unknown error'
+            ]);
+            @fclose($handle);
+            return false;
+        }
+        
+        // Close the file
+        if (@fclose($handle) === false) {
+            $lastError = error_get_last();
+            Log::warning('Failed to close network file handle', [
+                'filename' => $filename,
+                'error' => $lastError ? $lastError['message'] : 'Unknown error'
+            ]);
+            // Still return success since we wrote the content
+        }
+        
+        return $bytesWritten;
+    }
+    
+    /**
+     * Copy a file with retry logic and timeout.
+     *
+     * @param string $source
+     * @param string $destination
+     * @param int $maxRetries
+     * @param int $timeoutSeconds
+     * @return bool|int
+     */
+    private function copyFileWithRetry(string $source, string $destination, int $maxRetries = 3, int $timeoutSeconds = 60)
+    {
+        $attempt = 0;
+        
+        while ($attempt < $maxRetries) {
+            $attempt++;
+            
+            try {
+                // Log the attempt
+                if ($attempt > 1) {
+                    Log::info('Retrying file copy operation', [
+                        'source' => $source,
+                        'destination' => $destination,
+                        'attempt' => $attempt,
+                        'max_retries' => $maxRetries
+                    ]);
+                    
+                    // Wait a bit before retrying
+                    sleep(2);
+                }
+                
+                // Set a timeout for the copy operation
+                $startTime = time();
+                
+                // Try to copy the file
+                $result = @copy($source, $destination);
+                
+                // Check if we've exceeded the timeout
+                $elapsedTime = time() - $startTime;
+                if ($elapsedTime > $timeoutSeconds) {
+                    Log::warning('File copy operation timed out', [
+                        'source' => $source,
+                        'destination' => $destination,
+                        'timeout_seconds' => $timeoutSeconds,
+                        'elapsed_time' => $elapsedTime
+                    ]);
+                    return false;
+                }
+                
+                if ($result !== false) {
+                    // Success
+                    if ($attempt > 1) {
+                        Log::info('File copy operation succeeded on retry', [
+                            'source' => $source,
+                            'destination' => $destination,
+                            'attempt' => $attempt
+                        ]);
+                    }
+                    return filesize($destination);
+                }
+                
+                // Log failure
+                $lastError = error_get_last();
+                Log::warning('File copy attempt failed', [
+                    'source' => $source,
+                    'destination' => $destination,
+                    'attempt' => $attempt,
+                    'error' => $lastError ? $lastError['message'] : 'Unknown error'
+                ]);
+                
+            } catch (\Exception $e) {
+                Log::error('Exception during file copy attempt', [
+                    'source' => $source,
+                    'destination' => $destination,
+                    'attempt' => $attempt,
+                    'error' => $e->getMessage()
+                ]);
+            } catch (\Error $e) {
+                Log::error('Error during file copy attempt', [
+                    'source' => $source,
+                    'destination' => $destination,
+                    'attempt' => $attempt,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+        
+        // All retries failed
+        Log::error('File copy operation failed after all retries', [
+            'source' => $source,
+            'destination' => $destination,
+            'attempts' => $maxRetries
+        ]);
+        
+        return false;
+    }
+    
+    /**
+     * Copy content to a network file (UNC path) with better error handling.
+     *
+     * @param string $source
+     * @param string $destination
+     * @param int $timeoutSeconds
+     * @return bool|string
+     */
+    private function copyNetworkFile(string $source, string $destination, int $timeoutSeconds = 60)
+    {
+        // Check if the directory exists and is writable first
+        $directory = dirname($destination);
+        if (!is_dir($directory)) {
+            Log::error('Network directory does not exist', [
+                'directory' => $directory,
+                'destination' => $destination
+            ]);
+            return false;
+        }
+        
+        if (!is_writable($directory)) {
+            Log::error('Network directory is not writable', [
+                'directory' => $directory,
+                'destination' => $destination
+            ]);
+            return false;
+        }
+        
+        // Try to copy the file with a more controlled approach
+        $handle = @fopen($source, 'r');
+        if ($handle === false) {
+            $lastError = error_get_last();
+            Log::error('Failed to open source file for reading', [
+                'source' => $source,
+                'error' => $lastError ? $lastError['message'] : 'Unknown error'
+            ]);
+            return false;
+        }
+        
+        $destinationHandle = @fopen($destination, 'w');
+        if ($destinationHandle === false) {
+            $lastError = error_get_last();
+            Log::error('Failed to open destination file for writing', [
+                'destination' => $destination,
+                'error' => $lastError ? $lastError['message'] : 'Unknown error'
+            ]);
+            @fclose($handle);
+            return false;
+        }
+        
+        // Copy content
+        while (!feof($handle)) {
+            $buffer = @fread($handle, 8192);
+            if ($buffer === false) {
+                $lastError = error_get_last();
+                Log::error('Failed to read from source file', [
+                    'source' => $source,
+                    'error' => $lastError ? $lastError['message'] : 'Unknown error'
+                ]);
+                @fclose($handle);
+                @fclose($destinationHandle);
+                return false;
+            }
+            
+            $bytesWritten = @fwrite($destinationHandle, $buffer);
+            if ($bytesWritten === false) {
+                $lastError = error_get_last();
+                Log::error('Failed to write to destination file', [
+                    'destination' => $destination,
+                    'error' => $lastError ? $lastError['message'] : 'Unknown error'
+                ]);
+                @fclose($handle);
+                @fclose($destinationHandle);
+                return false;
+            }
+        }
+        
+        // Close the files
+        if (@fclose($handle) === false) {
+            $lastError = error_get_last();
+            Log::warning('Failed to close source file handle', [
+                'source' => $source,
+                'error' => $lastError ? $lastError['message'] : 'Unknown error'
+            ]);
+        }
+        
+        if (@fclose($destinationHandle) === false) {
+            $lastError = error_get_last();
+            Log::warning('Failed to close destination file handle', [
+                'destination' => $destination,
+                'error' => $lastError ? $lastError['message'] : 'Unknown error'
+            ]);
+        }
+        
+        return true;
+    }
     
     /**
      * Send deployment notification to relevant users.

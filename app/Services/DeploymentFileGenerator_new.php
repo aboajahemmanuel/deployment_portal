@@ -11,18 +11,20 @@ public function make(string $projectPath, ?string $repoUrl = null): string
 {
     $escapedPath = addslashes($projectPath);
     $escapedRepo = addslashes($repoUrl ?? '');
-    // Extract database name from project path (last segment of path)
-    $pathParts = explode(DIRECTORY_SEPARATOR, trim($projectPath, DIRECTORY_SEPARATOR));
-    $databaseName = end($pathParts) . '_' . time();
+
+    // Extract folder name for DB name
+    $folderName = basename($projectPath);
+    $timestamp = time();
+    $databaseName = $folderName . "_" . $timestamp;
 
     $php = <<<PHP
 <?php
 
 @header('Content-Type: text/plain');
 
-// --------------------------------
-// LOGGING
-// --------------------------------
+// -----------------------------
+// Create log folder + log file
+// -----------------------------
 \$logDir = __DIR__ . '/logs';
 \$logFile = \$logDir . '/deploy.log';
 
@@ -30,38 +32,25 @@ if (!is_dir(\$logDir)) {
     mkdir(\$logDir, 0777, true);
 }
 
-function writeLog(\$text) {
+function logMsg(\$text) {
     global \$logFile;
-
-    \$time = date("Y-m-d H:i:s");
-    \$line = "[\$time] \$text\\n";
-
-    echo \$line;
+    \$timestamp = date('Y-m-d H:i:s');
+    \$line = "[\$timestamp] \$text\\n";
     file_put_contents(\$logFile, \$line, FILE_APPEND);
+    echo "[LOG] \$text\\n";
 }
 
-function logMsg(\$text) { writeLog(\$text); }
-
-
-// --------------------------------
-// BASIC VARIABLES
-// --------------------------------
-\$projectPath  = '{$escapedPath}';
-\$repoUrl      = '{$escapedRepo}';
+// Basic required variables
+\$projectPath = '{$escapedPath}';
+\$repoUrl = '{$escapedRepo}';
 \$databaseName = '{$databaseName}';
-\$folder = basename(\$projectPath);
-\$APP_URL = "http://101-php-01.fmdqgroup.com/\$folder";
-\$ASSET_URL = "http://101-php-01.fmdqgroup.com/\$folder/public";
 
 logMsg("Deployment started.");
 logMsg("Project path: \$projectPath");
 logMsg("Repository: \$repoUrl");
-logMsg("Database: \$databaseName");
+logMsg("Database name: \$databaseName");
 
-
-// --------------------------------
-// Create project folder
-// --------------------------------
+// Ensure folder exists
 if (!is_dir(\$projectPath)) {
     logMsg("Project folder does not exist. Creating...");
     mkdir(\$projectPath, 0777, true);
@@ -69,98 +58,82 @@ if (!is_dir(\$projectPath)) {
     logMsg("Project folder exists.");
 }
 
+// Ensure Laravel required directories exist
+logMsg("Ensuring Laravel directories exist...");
+\$bootstrapCacheDir = \$projectPath . '/bootstrap/cache';
+if (!is_dir(\$bootstrapCacheDir)) {
+    mkdir(\$bootstrapCacheDir, 0777, true);
+}
+\$storageDir = \$projectPath . '/storage';
+if (!is_dir(\$storageDir)) {
+    mkdir(\$storageDir, 0777, true);
+}
+\$storageFrameworkDir = \$storageDir . '/framework';
+if (!is_dir(\$storageFrameworkDir)) {
+    mkdir(\$storageFrameworkDir, 0777, true);
+}
+\$storageFrameworkCacheDir = \$storageFrameworkDir . '/cache';
+if (!is_dir(\$storageFrameworkCacheDir)) {
+    mkdir(\$storageFrameworkCacheDir, 0777, true);
+}
+\$storageLogsDir = \$storageDir . '/logs';
+if (!is_dir(\$storageLogsDir)) {
+    mkdir(\$storageLogsDir, 0777, true);
+}
 
-// --------------------------------
-// Add Git, PHP, MySQL to PATH
-// --------------------------------
-putenv(
-    "PATH=" . getenv("PATH") .
-    ";C:\\\\Program Files\\\\Git\\\\cmd" .
-    ";C:\\\\xampp\\\\php" .
-    ";C:\\\\xampp\\\\mysql\\\\bin"
-);
-
+// Add Git & PHP to PATH
+putenv("PATH=" . getenv("PATH") . ";C:\\\\Program Files\\\\Git\\\\cmd;C:\\\\xampp\\\\php");
 logMsg("Environment PATH updated.");
 
-
-// --------------------------------
-// Helper for running shell commands
-// --------------------------------
+// Helper function to run commands
 function runCmd(\$cmd) {
     logMsg("Running command: \$cmd");
     exec(\$cmd . " 2>&1", \$out, \$code);
     echo implode("\\n", \$out) . "\\n";
-
-    if (\$code === 0) logMsg("Command succeeded.");
-    else logMsg("❌ Command FAILED (code \$code)");
-
+    if (\$code === 0) {
+        logMsg("Command succeeded.");
+    } else {
+        logMsg("Command FAILED with code \$code.");
+    }
     return \$code === 0;
 }
 
+// Set permissions for Laravel directories
+logMsg("Setting permissions for Laravel directories...");
+runCmd("icacls \"\$projectPath\\bootstrap\\cache\" /grant Everyone:F /T");
+runCmd("icacls \"\$projectPath\\storage\" /grant Everyone:F /T");
 
-// --------------------------------
-// Verify MySQL
-// --------------------------------
-runCmd("mysql --version");
-
-
-// --------------------------------
-// Clone repo or update
-// --------------------------------
+// Clone repo if empty
 if (empty(glob("\$projectPath/*"))) {
-    logMsg("Directory empty → cloning repository...");
-    runCmd("cd /d \$projectPath && git clone \$repoUrl .");
+    logMsg("Project directory empty. Cloning repository...");
+    if (!empty(\$repoUrl)) {
+        runCmd("cd /d \$projectPath && git clone \$repoUrl .");
+    } else {
+        logMsg("❌ Repo URL missing.");
+        exit;
+    }
 } else {
-    logMsg("Directory not empty → pulling updates...");
+    logMsg("Project not empty. Pulling latest updates...");
     runCmd("cd /d \$projectPath && git pull origin main");
-    runCmd("cd /d \$projectPath && php artisan config:cache");
-    runCmd("cd /d \$projectPath && php artisan route:cache");
 }
 
-
-// --------------------------------
-// Create database
-// --------------------------------
-logMsg("Creating database...");
-runCmd(
-    "mysql -u root -h 127.0.0.1 -e \\"CREATE DATABASE IF NOT EXISTS `\$\{databaseName}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci\\""
-);
-
-
-
-// --------------------------------
 // Composer install
-// --------------------------------
+logMsg("Running composer install...");
 runCmd("cd /d \$projectPath && composer install");
 
+// Ensure permissions for Laravel
+logMsg("Setting permissions...");
+runCmd("icacls \"\$projectPath\\storage\" /grant Everyone:F /T");
+runCmd("icacls \"\$projectPath\\bootstrap\\cache\" /grant Everyone:F /T");
 
-
-// --------------------------------
-// Generate .env
-// --------------------------------
+// Generate .env file
 logMsg("Generating .env file...");
 \$envContent = <<<ENV
 APP_NAME=Laravel
 APP_ENV=local
 APP_KEY=
 APP_DEBUG=true
-APP_URL=\$APP_URL
-ASSET_URL=\$ASSET_URL
-
-BROADCAST_DRIVER=log
-CACHE_DRIVER=file
-FILESYSTEM_DRIVER=local
-QUEUE_CONNECTION=sync
-SESSION_DRIVER=file
-
-MAIL_MAILER=smtp
-MAIL_HOST=smtp.office365.com
-MAIL_PORT=587
-MAIL_USERNAME=no-reply@fmdqgroup.com
-MAIL_PASSWORD=J%662460932740ap
-MAIL_ENCRYPTION=tls
-MAIL_FROM_ADDRESS=no-reply@fmdqgroup.com
-
+APP_URL=http://localhost
 
 SESSION_DRIVER=file
 
@@ -170,102 +143,60 @@ DB_PORT=3306
 DB_DATABASE=\$databaseName
 DB_USERNAME=root
 DB_PASSWORD=
+
 ENV;
 
 file_put_contents("\$projectPath/.env", \$envContent);
+logMsg(".env file created.");
 
-
-// --------------------------------
-// Generate .htaccess
-// --------------------------------
-\$htaccess = <<<HTA
-<IfModule mod_rewrite.c>
-    <IfModule mod_negotiation.c>
-        Options -MultiViews -Indexes
-    </IfModule>
-
-    RewriteEngine On
-
-    RewriteRule ^(\\.env|composer\\\\.json|composer\\\\.lock|artisan|server\\\\.php)$ - [F,L]
-    RewriteRule (^|/)\\\\. - [F,L]
-
-    RewriteRule ^(config|storage|vendor)/ - [F,L]
-
-    RewriteCond %{REQUEST_FILENAME} -f
-    RewriteCond %{REQUEST_FILENAME} !/index\\\\.php$
-    RewriteRule .* - [F,L]
-
-    RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteRule ^ index.php [L]
-</IfModule>
-HTA;
-
-file_put_contents("\$projectPath/.htaccess", \$htaccess);
-
-
-// --------------------------------
-// Create root index.php
-// --------------------------------
-\$indexPhp = <<<IDX
-<?php
-
-
-require_once __DIR__.'/public/index.php';
-IDX;
-
-file_put_contents("\$projectPath/index.php", \$indexPhp);
-
-
-// --------------------------------
 // Generate app key
-// --------------------------------
+logMsg("Generating app key...");
 runCmd("cd /d \$projectPath && php artisan key:generate");
 
-
-// --------------------------------
-// CHECK IF MIGRATIONS ALREADY RAN
-// --------------------------------
-logMsg("Checking if migrations table exists...");
- runCmd("cd /d \$projectPath && php artisan migrate --force");
-
-// \$migrationCheck = runCmd(
-//     "mysql -u root -h 127.0.0.1 -D \$databaseName -e \\"SHOW TABLES LIKE 'migrations';\\""
-// );
-
-// if (!\$migrationCheck) {
-//     logMsg("❌ Migration table does NOT exist → Running migrations...");
-//     runCmd("cd /d \$projectPath && php artisan migrate --force");
-// } else {
-//     logMsg("✔ Migration table exists → SKIPPING migrations.");
-// }
-
-
-// --------------------------------
-// CHECK IF SEEDERS ALREADY RAN
-// --------------------------------
-\$seedMarker = "\$projectPath/storage/logs/seeded.flag";
-
-if (!file_exists(\$seedMarker)) {
-    logMsg("Seeders have not run before → running seeders...");
-    runCmd("cd /d \$projectPath && php artisan db:seed --force");
-
-    file_put_contents(\$seedMarker, "seeded");
-    logMsg("Seed marker created.");
-} else {
-    logMsg("✔ Seeders already executed → SKIPPING seeding.");
+// Create database
+logMsg("Creating database...");
+// Try local MySQL first
+\$createDbCmd = "mysql -u root -e \"CREATE DATABASE IF NOT EXISTS \`{\$databaseName}\`;\"";
+if (!runCmd(\$createDbCmd)) {
+    // If local fails, try with password (you might want to customize this)
+    logMsg("Retrying database creation with password...");
+    \$createDbCmd = "mysql -u root -proot -e \"CREATE DATABASE IF NOT EXISTS \`{\$databaseName}\`;\"";
+    runCmd(\$createDbCmd);
 }
 
+// Update .env with database credentials if needed
+logMsg("Updating .env with database credentials...");
+\$envPath = "\$projectPath/.env";
+\$envContent = file_get_contents(\$envPath);
+// Add or update database credentials
+\$envContent = preg_replace('/DB_USERNAME=.*/', 'DB_USERNAME=root', \$envContent);
+\$envContent = preg_replace('/DB_PASSWORD=.*/', 'DB_PASSWORD=', \$envContent);
+file_put_contents(\$envPath, \$envContent);
 
-// --------------------------------
-// Clear cache
-// --------------------------------
+// Run migrations
+logMsg("Running database migrations...");
+// Ensure permissions before running migrations
+runCmd("icacls \"\$projectPath\\bootstrap\\cache\" /grant Everyone:F /T");
+runCmd("icacls \"\$projectPath\\storage\" /grant Everyone:F /T");
+runCmd("cd /d \$projectPath && php artisan migrate --force");
+
+// Ensure permissions for Laravel
+logMsg("Setting permissions...");
+runCmd("icacls \"\$projectPath\\storage\" /grant Everyone:F /T");
+runCmd("icacls \"\$projectPath\\bootstrap\\cache\" /grant Everyone:F /T");
+
+
+// Fix permissions
+logMsg("Setting permissions for storage and cache...");
+runCmd("cd /d \$projectPath && icacls \"storage\" /grant Everyone:F /T");
+runCmd("cd /d \$projectPath && icacls \"bootstrap\\cache\" /grant Everyone:F /T");
+
+// Clear and cache Laravel
+logMsg("Optimizing Laravel...");
 runCmd("cd /d \$projectPath && php artisan optimize:clear");
+runCmd("cd /d \$projectPath && php artisan config:cache");
+runCmd("cd /d \$projectPath && php artisan route:cache");
 
-
-// --------------------------------
-// DONE
-// --------------------------------
 logMsg("Deployment completed successfully.");
 echo "\\n✅ Deployment completed.\\n";
 
@@ -273,6 +204,7 @@ PHP;
 
     return $php;
 }
+
 
 
     /**

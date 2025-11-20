@@ -70,7 +70,8 @@ $commands = [
     "cd /d " . escapeshellarg($projectPath) . " && composer install --no-dev --optimize-autoloader",
     "cd /d " . escapeshellarg($projectPath) . " && php artisan cache:clear",
     "cd /d " . escapeshellarg($projectPath) . " && php artisan config:cache",
-    "cd /d " . escapeshellarg($projectPath) . " && php artisan route:cache",
+    // Skip route caching to avoid MethodNotAllowedHttpException issues
+    // "cd /d " . escapeshellarg($projectPath) . " && php artisan route:cache",
     "cd /d " . escapeshellarg($projectPath) . " && php artisan optimize:clear",
     "cd /d " . escapeshellarg($projectPath) . " && php artisan migrate:rollback", // Rollback database migrations
 ];

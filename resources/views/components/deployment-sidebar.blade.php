@@ -84,13 +84,13 @@
                         </a>
                     </li>
 
-                    {{-- <li class="nk-menu-item {{ request()->routeIs('admin.deployment-files.*') ? 'active' : '' }}">
+                    <li class="nk-menu-item {{ request()->routeIs('admin.deployment-files.*') ? 'active' : '' }}">
                         <a href="{{ route('admin.deployment-files.index') }}" class="nk-menu-link">
                             <span class="nk-menu-icon"><em class="icon ni ni-file-code"></em></span>
                             <span class="nk-menu-text">Deployment File Generator</span>
                         </a>
                     </li>
-                     --}}
+                    
                     {{-- @can('viewAny', App\Models\Project::class)
                     <li class="nk-menu-item {{ request()->routeIs('pipelines.*') ? 'active' : '' }}">
                         <a href="#" class="nk-menu-link nk-menu-toggle">
